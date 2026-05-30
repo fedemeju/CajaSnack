@@ -1,0 +1,33 @@
+# Dependencias
+node_modules/
+
+# Builds y artefactos
+out/
+dist/
+release/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Variables de entorno / secretos
+.env
+.env.*
+*.local
+
+# Base de datos cifrada y backups (viven en %APPDATA%\cajasnack, nunca en el repo)
+*.db
+*.db.enc
+*.sqlite
+backups/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
