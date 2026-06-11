@@ -1,10 +1,17 @@
 import { app, safeStorage } from 'electron'
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const IV_LEN = 12
 const TAG_LEN = 16
+
+// Recuperación por contraseña: envoltura de la clave del DB con una clave
+// derivada de una contraseña (scrypt). Permite descifrar las copias en CUALQUIER
+// PC con la contraseña, sin depender del candado del sistema (safeStorage/DPAPI).
+const SCRYPT_SALT_LEN = 16
+const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 } as const
+const RECOVERY_MAGIC = 'CSR1' // CajaSnack Recovery v1
 
 function keyFilePath(): string {
   return join(app.getPath('userData'), 'caja.key')
@@ -53,6 +60,37 @@ export function decrypt(blob: Buffer, key: Buffer): Buffer {
   const tag = blob.subarray(IV_LEN, IV_LEN + TAG_LEN)
   const enc = blob.subarray(IV_LEN + TAG_LEN)
   const decipher = createDecipheriv('aes-256-gcm', key, iv)
+  decipher.setAuthTag(tag)
+  return Buffer.concat([decipher.update(enc), decipher.final()])
+}
+
+/**
+ * Envuelve la clave del DB con una clave derivada de la contraseña de
+ * recuperación. El resultado (magic + salt + iv + tag + cifrado) es portable:
+ * se puede guardar junto a las copias y desenvolver en otra PC con la contraseña.
+ */
+export function envolverClaveConPassword(dbKey: Buffer, password: string): Buffer {
+  const salt = randomBytes(SCRYPT_SALT_LEN)
+  const kek = scryptSync(Buffer.from(password, 'utf8'), salt, 32, SCRYPT_PARAMS)
+  const iv = randomBytes(IV_LEN)
+  const cipher = createCipheriv('aes-256-gcm', kek, iv)
+  const enc = Buffer.concat([cipher.update(dbKey), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return Buffer.concat([Buffer.from(RECOVERY_MAGIC, 'ascii'), salt, iv, tag, enc])
+}
+
+/** Desenvuelve la clave del DB a partir del archivo de recuperación y la contraseña. */
+export function desenvolverClaveConPassword(blob: Buffer, password: string): Buffer {
+  if (blob.subarray(0, 4).toString('ascii') !== RECOVERY_MAGIC) {
+    throw new Error('El archivo de recuperación no es válido.')
+  }
+  let off = 4
+  const salt = blob.subarray(off, (off += SCRYPT_SALT_LEN))
+  const iv = blob.subarray(off, (off += IV_LEN))
+  const tag = blob.subarray(off, (off += TAG_LEN))
+  const enc = blob.subarray(off)
+  const kek = scryptSync(Buffer.from(password, 'utf8'), salt, 32, SCRYPT_PARAMS)
+  const decipher = createDecipheriv('aes-256-gcm', kek, iv)
   decipher.setAuthTag(tag)
   return Buffer.concat([decipher.update(enc), decipher.final()])
 }

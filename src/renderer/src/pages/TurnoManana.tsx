@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   turnoMananaVacio,
+  POOL_PRECIO_DEFECTO,
   type LineaMesa,
   type LineaRubro,
   type Turno,
@@ -12,15 +13,29 @@ import { calcularManana, calcularNoche } from '../../../shared/calc'
 import { fechaLinda, formatMoney } from '../lib/format'
 import { GastoEditor, MesaEditor, MoneyField, PoolField } from '../components/lines'
 import { useTurno } from '../lib/useTurno'
+import { enviarCierrePorMail } from '../lib/pdf'
 import { AbrirTurno, GuardadoBadge } from '../components/AbrirTurno'
-import { useConfirm } from '../components/Confirm'
+import { CerrarTurnoModal } from '../components/CerrarTurno'
+import { PedirClaveAdmin } from '../components/PedirClaveAdmin'
 
 function normalizarManana(d: TurnoMananaData): TurnoMananaData {
   const legacy = d as unknown as { pool?: number; mercadoPago?: unknown }
+  // Caja base: si el turno es viejo (solo número) o no tiene ítems, los armamos
+  // a partir del número para poder editarlos como lista.
+  let cajaBaseItems = Array.isArray(d.cajaBaseItems) ? d.cajaBaseItems : []
+  if (cajaBaseItems.length === 0) {
+    cajaBaseItems = d.cajaBase ? [{ detalle: '', monto: d.cajaBase }] : [{ detalle: '', monto: 0 }]
+  }
+  const cumplesEventos =
+    Array.isArray(d.cumplesEventos) && d.cumplesEventos.length
+      ? d.cumplesEventos
+      : [{ detalle: '', monto: 0 }]
   return {
     ...d,
+    cajaBaseItems,
+    cumplesEventos,
     poolUnidades: typeof d.poolUnidades === 'number' ? d.poolUnidades : 0,
-    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : 6000,
+    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : POOL_PRECIO_DEFECTO,
     mercadoPago: Array.isArray(legacy.mercadoPago)
       ? (legacy.mercadoPago as TurnoMananaData['mercadoPago'])
       : []
@@ -29,7 +44,8 @@ function normalizarManana(d: TurnoMananaData): TurnoMananaData {
 
 export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
   const t = useTurno<TurnoMananaData>('manana', user, turnoMananaVacio, normalizarManana)
-  const confirm = useConfirm()
+  const [reabrirAbierto, setReabrirAbierto] = useState(false)
+  const [cerrando, setCerrando] = useState(false)
 
   if (!t.entrado) {
     return (
@@ -49,20 +65,11 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
   const cuadre = calcularManana(data)
   const readOnly = t.readOnly
   const set = t.setData
+  const cajaBaseItems = data.cajaBaseItems ?? []
+  const cajaBaseTotal = cajaBaseItems.reduce((a, m) => a + (m.monto || 0), 0)
 
-  async function cerrarTurno(): Promise<void> {
-    if (!cuadre.cuadra) {
-      const dif = formatMoney(Math.abs(cuadre.diferencia))
-      const signo = cuadre.diferencia > 0 ? 'FALTA' : 'SOBRA'
-      const ok = await confirm({
-        mensaje: `La caja NO cuadra. ${signo} ${dif}.\n\n¿Querés cerrar el turno igual?`,
-        confirmar: 'Cerrar igual',
-        peligro: true
-      })
-      if (!ok) return
-    }
-    await t.cerrar()
-  }
+  const avisoDif =
+    (cuadre.diferencia > 0 ? 'FALTA ' : 'SOBRA ') + formatMoney(Math.abs(cuadre.diferencia))
 
   return (
     <div className="turno-page">
@@ -84,7 +91,23 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
         <div className="card card-rendir">
           <h2>Ingresos · Caja</h2>
           <div className="card-body">
-            <MoneyField label="Caja Base" value={data.cajaBase} disabled={readOnly} onChange={(v) => set({ cajaBase: v })} />
+            <div className="field" style={{ display: 'block' }}>
+              <label>Caja Base (uno o varios ingresos)</label>
+              <div style={{ marginTop: 8 }}>
+                <MesaEditor
+                  items={cajaBaseItems}
+                  disabled={readOnly}
+                  placeholder="Concepto (opcional)"
+                  onChange={(v) =>
+                    set({ cajaBaseItems: v, cajaBase: v.reduce((a, m) => a + (m.monto || 0), 0) })
+                  }
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label>Total Caja Base</label>
+              <span>{formatMoney(cajaBaseTotal)}</span>
+            </div>
             <MoneyField
               label="Facturado Mostrador + Teléfono"
               value={data.facturadoMostradorTelefono}
@@ -93,6 +116,17 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
             />
             <MoneyField label="Mesa 49" value={data.mesa49} disabled={readOnly} onChange={(v) => set({ mesa49: v })} />
             <MoneyField label="Recibido Mozo" value={data.recibidoMozo} disabled={readOnly} onChange={(v) => set({ recibidoMozo: v })} />
+            <div className="field" style={{ display: 'block' }}>
+              <label>Cumples y Eventos (uno o varios)</label>
+              <div style={{ marginTop: 8 }}>
+                <MesaEditor
+                  items={data.cumplesEventos ?? []}
+                  disabled={readOnly}
+                  placeholder="Cumple / evento (opcional)"
+                  onChange={(v) => set({ cumplesEventos: v })}
+                />
+              </div>
+            </div>
             <PoolField
               unidades={data.poolUnidades}
               precio={data.poolPrecio}
@@ -100,6 +134,9 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
               onUnidades={(n) => set({ poolUnidades: n })}
               onPrecio={(n) => set({ poolPrecio: n })}
             />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+              El Pool se <b>resta</b> del Total + Caja.
+            </div>
             <div className="subtotal rendir">
               <span>Total + Caja</span>
               <span>{formatMoney(cuadre.totalArriba)}</span>
@@ -130,13 +167,20 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
               </div>
             </div>
             <MoneyField label="Pedidos Ya" value={data.pedidosYa} disabled={readOnly} onChange={(v) => set({ pedidosYa: v })} />
-            <div className="field">
-              <label>Proveedores (efectivo)</label>
-              <span>{formatMoney(cuadre.proveedoresEfectivo)}</span>
-            </div>
-            <div className="field">
-              <label>Otros gastos (efectivo)</label>
-              <span>{formatMoney(cuadre.otrosEfectivo)}</span>
+            <div className="gastos-destacado">
+              <div className="gastos-destacado-titulo">Gastos pagados (salen de la caja)</div>
+              <div className="field">
+                <label>Proveedores (efectivo)</label>
+                <span>{formatMoney(cuadre.proveedoresEfectivo)}</span>
+              </div>
+              <div className="field" style={{ borderBottom: 0 }}>
+                <label>Otros gastos (efectivo)</label>
+                <span>{formatMoney(cuadre.otrosEfectivo)}</span>
+              </div>
+              <div className="gastos-destacado-total">
+                <span>Total gastos en efectivo</span>
+                <span>{formatMoney(cuadre.proveedoresEfectivo + cuadre.otrosEfectivo)}</span>
+              </div>
             </div>
             <div className="subtotal entrega">
               <span>Total Entregado</span>
@@ -174,22 +218,41 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
           ← Volver
         </button>
         {readOnly ? (
-          <button
-            className="btn btn-primary"
-            onClick={async () => {
-              if (await confirm('¿Reabrir este turno cerrado para poder corregirlo?')) t.reabrir()
-            }}
-          >
+          <button className="btn btn-primary" onClick={() => setReabrirAbierto(true)}>
             Reabrir turno
           </button>
         ) : (
-          <button className="btn btn-primary" onClick={cerrarTurno}>
+          <button className="btn btn-primary" onClick={() => setCerrando(true)}>
             Cerrar turno
           </button>
         )}
       </div>
 
       {t.error && <div className="error">{t.error}</div>}
+
+      {reabrirAbierto && (
+        <PedirClaveAdmin
+          titulo="Reabrir turno cerrado"
+          mensaje="Este turno ya está cerrado. Para reabrirlo y corregirlo hace falta la contraseña de un administrador."
+          confirmar="Reabrir turno"
+          accion={(password) => t.reabrir(password)}
+          onListo={() => setReabrirAbierto(false)}
+          onClose={() => setReabrirAbierto(false)}
+        />
+      )}
+
+      {cerrando && (
+        <CerrarTurnoModal
+          cuadra={cuadre.cuadra}
+          avisoDiferencia={avisoDif}
+          onConfirm={async (nombre) => {
+            const res = await t.cerrar(nombre)
+            if (res.ok) enviarCierrePorMail(res.data, nombre)
+            return res
+          }}
+          onClose={() => setCerrando(false)}
+        />
+      )}
     </div>
   )
 }

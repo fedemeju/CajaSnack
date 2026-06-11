@@ -28,8 +28,8 @@ export interface UseTurno<T> {
   guardando: boolean
   guardadoLabel: string
   error: string
-  cerrar: () => Promise<ApiResult<Turno>>
-  reabrir: () => Promise<ApiResult<Turno>>
+  cerrar: (nombreCajero: string) => Promise<ApiResult<Turno>>
+  reabrir: (password: string) => Promise<ApiResult<Turno>>
   actualizarTurno: (t: Turno) => void
   volver: () => void
 }
@@ -86,7 +86,26 @@ export function useTurno<T extends Data>(
     }
   }, [tipo, entrado])
 
+  // CLAVE anti-pérdida: el autoguardado SOLO se dispara tras una edición real del
+  // usuario (setData), nunca al cargar/recargar datos. Así una pantalla recién
+  // cargada (o vacía por una recarga) jamás puede pisar lo guardado.
+  const sucio = useRef(false)
+
+  // Si quedó un turno abierto sin cerrar, entrar DIRECTO a él con sus datos
+  // cargados. Evita la pantalla de selección y que el usuario vea campos vacíos
+  // y crea que "se perdió" lo cargado.
+  useEffect(() => {
+    if (entrado || !pendiente) return
+    setTurno(pendiente)
+    setDataRaw(fundir(pendiente.data as T))
+    sucio.current = false
+    setFecha(pendiente.fecha)
+    setGuardadoLabel('Turno abierto')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendiente, entrado])
+
   const setData = useCallback((patch: Partial<T>): void => {
+    sucio.current = true // marca edición del usuario → habilita el autoguardado
     setDataRaw((d) => ({ ...d, ...patch }))
   }, [])
 
@@ -96,6 +115,7 @@ export function useTurno<T extends Data>(
     if (exist.ok && exist.data) {
       setTurno(exist.data)
       setDataRaw(fundir(exist.data.data))
+      sucio.current = false
       setGuardadoLabel(exist.data.estado === 'cerrado' ? 'Turno cerrado' : 'Turno abierto')
       return
     }
@@ -105,6 +125,7 @@ export function useTurno<T extends Data>(
       setFecha(pend.data.fecha)
       setTurno(pend.data)
       setDataRaw(fundir(pend.data.data))
+      sucio.current = false
       setGuardadoLabel('Turno abierto')
       return
     }
@@ -118,6 +139,7 @@ export function useTurno<T extends Data>(
     if (creado.ok) {
       setTurno(creado.data)
       setDataRaw(vacio())
+      sucio.current = false
       setGuardadoLabel('Turno abierto')
     } else {
       setError(creado.error)
@@ -125,14 +147,10 @@ export function useTurno<T extends Data>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha, tipo, user.id])
 
-  // Autoguardado con debounce: cada cambio en data se persiste solo
-  const saltarPrimero = useRef(true)
+  // Autoguardado con debounce: solo si el usuario editó (sucio). Las cargas
+  // (abrir/auto-resume/volver) ponen sucio=false, así nunca disparan un guardado.
   useEffect(() => {
-    if (!entrado || readOnly || !turno) return
-    if (saltarPrimero.current) {
-      saltarPrimero.current = false
-      return
-    }
+    if (!entrado || readOnly || !turno || !sucio.current) return
     setGuardando(true)
     const h = setTimeout(async () => {
       const res = await window.api.guardarTurno({
@@ -163,29 +181,34 @@ export function useTurno<T extends Data>(
     return () => window.api.notificarGuardando(false)
   }, [])
 
-  const cerrar = useCallback(async (): Promise<ApiResult<Turno>> => {
-    if (!turno) return { ok: false, error: 'No hay turno abierto.' }
-    const res = await window.api.guardarTurno({
-      id: turno.id,
-      fecha: turno.fecha,
-      tipo,
-      usuarioId: user.id,
-      data,
-      cerrar: true
-    })
-    if (res.ok) {
-      setTurno(res.data)
-      setGuardadoLabel('Turno cerrado')
-    }
-    return res
-  }, [turno, data, tipo, user.id])
+  const cerrar = useCallback(
+    async (nombreCajero: string): Promise<ApiResult<Turno>> => {
+      if (!turno) return { ok: false, error: 'No hay turno abierto.' }
+      const dataCierre = { ...data, cerradoPor: nombreCajero } as T
+      const res = await window.api.guardarTurno({
+        id: turno.id,
+        fecha: turno.fecha,
+        tipo,
+        usuarioId: user.id,
+        data: dataCierre,
+        cerrar: true
+      })
+      if (res.ok) {
+        setTurno(res.data)
+        setDataRaw(dataCierre)
+        setGuardadoLabel('Turno cerrado')
+      }
+      return res
+    },
+    [turno, data, tipo, user.id]
+  )
 
-  const reabrir = useCallback(async (): Promise<ApiResult<Turno>> => {
+  const reabrir = useCallback(async (password: string): Promise<ApiResult<Turno>> => {
     if (!turno) return { ok: false, error: 'No hay turno para reabrir.' }
-    const res = await window.api.reabrirTurno(turno.id)
+    const res = await window.api.reabrirTurno(turno.id, password)
     if (res.ok) {
       setTurno(res.data)
-      saltarPrimero.current = false
+      sucio.current = false
       setGuardadoLabel('Turno reabierto')
     } else {
       setError(res.error)
@@ -200,7 +223,7 @@ export function useTurno<T extends Data>(
   const volver = useCallback((): void => {
     setTurno(null)
     setDataRaw(vacio())
-    saltarPrimero.current = true
+    sucio.current = false
     setGuardadoLabel('')
     setError('')
     // eslint-disable-next-line react-hooks/exhaustive-deps

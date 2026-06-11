@@ -33,14 +33,20 @@ export interface LineaRubro {
   paquetes: number
   cantidad: number
   monto: number
+  /** Si ya está facturado (en mesas), no se suma al total para no duplicar. */
+  facturado?: boolean
 }
 
 export interface TurnoMananaData {
   // Ingresos (recuadro de arriba)
   cajaBase: number
+  /** Desglose de la caja base en varios ingresos (suma = cajaBase). */
+  cajaBaseItems?: LineaMesa[]
   facturadoMostradorTelefono: number
   mesa49: number
   recibidoMozo: number
+  /** Ingresos por cumples y eventos del turno mañana (uno o varios). */
+  cumplesEventos?: LineaMesa[]
   poolUnidades: number
   poolPrecio: number
   // Egresos
@@ -52,6 +58,8 @@ export interface TurnoMananaData {
   tarjetasRetiradas: number
   mercadoPago: LineaMesa[]
   pedidosYa: number
+  /** Nombre de la persona que cerró la caja (se pide al cerrar el turno). */
+  cerradoPor?: string
 }
 
 export interface AperturaNoche {
@@ -82,6 +90,8 @@ export interface TurnoNocheData {
   cumples: LineaRubro[]
   eventos: LineaRubro[]
   totalBowling: number
+  /** Nombre de la persona que cerró la caja (se pide al cerrar el turno). */
+  cerradoPor?: string
 }
 
 /** Un evento en el historial de firma de la apertura del turno noche. */
@@ -105,6 +115,16 @@ export interface Turno {
   firmaLog: FirmaEvento[]
   creadoAt: string
   actualizadoAt: string
+}
+
+/** Un registro de la bitácora de actividad (auditoría). */
+export interface RegistroAuditoria {
+  id: number
+  at: string // ISO datetime
+  usuarioId: number | null
+  usuarioNombre: string
+  accion: string
+  detalle: string
 }
 
 // ---- Payloads IPC ----
@@ -139,16 +159,54 @@ export interface EstadoBackup {
   dias: number | null
 }
 
+/** Estado del protocolo de seguridad/respaldo de los datos. */
+export interface EstadoSeguridad {
+  /** Hay una contraseña de recuperación configurada (clave envuelta por password). */
+  recuperacionConfigurada: boolean
+  /** Carpeta de respaldo externo (pendrive / Drive / OneDrive), o null. */
+  respaldoDir: string | null
+  /** Fecha (ISO) del último respaldo externo exitoso, o null. */
+  respaldoUltimo: string | null
+  /** Hay copias pendientes de subir al respaldo externo (se reintentan solas). */
+  respaldoPendiente: number
+}
+
+/** Estado del envío del cierre por email. */
+export interface EstadoMail {
+  configurado: boolean
+  /** Cuenta Gmail desde la que se envía, o null. */
+  remitente: string | null
+  /** Email destino del cierre, o null. */
+  destino: string | null
+  /** Cierres pendientes de enviar (se reintentan al cerrar el próximo turno). */
+  pendientes: number
+}
+
+/** Estado de la copia en la nube (Supabase Storage), siempre cifrada. */
+export interface EstadoNube {
+  configurada: boolean
+  email: string | null
+  /** Fecha (ISO) del último envío exitoso a la nube, o null. */
+  ultimo: string | null
+  /** Copias pendientes de subir (se reintentan solas). */
+  pendientes: number
+}
+
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
+
+/** Precio por defecto del pool (unidad). Se usa al abrir turnos nuevos. */
+export const POOL_PRECIO_DEFECTO = 7000
 
 export function turnoMananaVacio(): TurnoMananaData {
   return {
     cajaBase: 0,
+    cajaBaseItems: [{ detalle: '', monto: 0 }],
     facturadoMostradorTelefono: 0,
     mesa49: 0,
     recibidoMozo: 0,
+    cumplesEventos: [{ detalle: '', monto: 0 }],
     poolUnidades: 0,
-    poolPrecio: 6000,
+    poolPrecio: POOL_PRECIO_DEFECTO,
     proveedores: [],
     otros: [],
     cajaDejadaSiguienteTurno: 0,
@@ -169,7 +227,7 @@ export function turnoNocheVacio(): TurnoNocheData {
     mesasFacturadas: [10].map((n) => ({ detalle: String(n), monto: 0 })),
     mesasSinFacturar: [49, 105].map((n) => ({ detalle: String(n), monto: 0 })),
     poolUnidades: 0,
-    poolPrecio: 6000,
+    poolPrecio: POOL_PRECIO_DEFECTO,
     tarjetas: 0,
     efectivoEnCaja: 0,
     efectivoEnSobres: 0,

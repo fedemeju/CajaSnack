@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Usuario } from '../../../shared/types'
-import logo from '../assets/logo-horizontal.png'
+import { Logo } from '../components/Logo'
 
 export function Login({ onLogin }: { onLogin: (u: Usuario) => void }): JSX.Element {
   const [usuario, setUsuario] = useState('')
@@ -21,7 +21,7 @@ export function Login({ onLogin }: { onLogin: (u: Usuario) => void }): JSX.Eleme
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
-        <img className="login-logo" src={logo} alt="Caja Snack" />
+        <Logo className="login-logo" fondoClaro />
         <p>Caja de Snack Bowling</p>
 
         <label htmlFor="u">Usuario</label>

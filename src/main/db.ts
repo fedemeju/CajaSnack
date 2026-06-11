@@ -10,10 +10,16 @@ import {
   unlinkSync,
   writeFileSync
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js'
-import type { BackupInfo } from '../shared/types'
-import { decrypt, encrypt, getDbKey } from './crypto'
+import type { BackupInfo, EstadoSeguridad } from '../shared/types'
+import {
+  decrypt,
+  desenvolverClaveConPassword,
+  encrypt,
+  envolverClaveConPassword,
+  getDbKey
+} from './crypto'
 
 /** Cuántas copias conservar en la carpeta de backups (las más viejas se borran). */
 const MAX_BACKUPS = 60
@@ -21,6 +27,8 @@ const MAX_BACKUPS = 60
 let SQL: SqlJsStatic
 let db: Database
 let key: Buffer
+/** true si la base existe pero no se pudo descifrar con la clave de esta PC. */
+let bloqueada = false
 
 function dbFilePath(): string {
   return join(app.getPath('userData'), 'caja.db.enc')
@@ -30,6 +38,243 @@ function backupsDir(): string {
   const dir = join(app.getPath('userData'), 'backups')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   return dir
+}
+
+// ---- Recuperación por contraseña ----
+
+function recoveryKeyPath(): string {
+  return join(app.getPath('userData'), 'caja.recovery.key')
+}
+
+/** ¿Hay una contraseña de recuperación configurada? */
+export function recuperacionConfigurada(): boolean {
+  return existsSync(recoveryKeyPath())
+}
+
+/** Configura/actualiza la contraseña de recuperación (envuelve la clave del DB). */
+export function configurarRecovery(password: string): void {
+  if (!password || password.length < 6) {
+    throw new Error('La contraseña de recuperación debe tener al menos 6 caracteres.')
+  }
+  writeFileSync(recoveryKeyPath(), envolverClaveConPassword(key, password))
+  empujarRecoveryARespaldo()
+}
+
+/** Verifica que la contraseña de recuperación sea correcta. */
+export function verificarRecovery(password: string): boolean {
+  if (!existsSync(recoveryKeyPath())) return false
+  try {
+    const k = desenvolverClaveConPassword(readFileSync(recoveryKeyPath()), password)
+    return k.equals(key)
+  } catch {
+    return false
+  }
+}
+
+// ---- Respaldo externo (segunda carpeta: pendrive / Drive / OneDrive) ----
+
+interface RespaldoCfg {
+  dir: string | null
+  ultimo: string | null
+  pendientes: string[]
+}
+
+function respaldoCfgPath(): string {
+  return join(app.getPath('userData'), 'respaldo.json')
+}
+
+function leerRespaldoCfg(): RespaldoCfg {
+  try {
+    const c = JSON.parse(readFileSync(respaldoCfgPath(), 'utf8'))
+    return {
+      dir: typeof c.dir === 'string' ? c.dir : null,
+      ultimo: typeof c.ultimo === 'string' ? c.ultimo : null,
+      pendientes: Array.isArray(c.pendientes) ? c.pendientes.map(String) : []
+    }
+  } catch {
+    return { dir: null, ultimo: null, pendientes: [] }
+  }
+}
+
+function escribirRespaldoCfg(c: RespaldoCfg): void {
+  writeFileSync(respaldoCfgPath(), JSON.stringify(c, null, 2), 'utf8')
+}
+
+/** Subcarpeta dentro del destino externo donde se guardan las copias. */
+function respaldoDestDir(dir: string): string {
+  return join(dir, 'CajaSnack-backups')
+}
+
+/** Copia la llave de recuperación al destino externo (para que sea autosuficiente). */
+function empujarRecoveryARespaldo(): void {
+  const cfg = leerRespaldoCfg()
+  if (!cfg.dir || !existsSync(cfg.dir) || !existsSync(recoveryKeyPath())) return
+  try {
+    const dest = respaldoDestDir(cfg.dir)
+    mkdirSync(dest, { recursive: true })
+    copyFileSync(recoveryKeyPath(), join(dest, 'caja.recovery.key'))
+  } catch {
+    /* si el destino no está disponible, se reintenta en el próximo respaldo */
+  }
+}
+
+/**
+ * Intenta copiar un archivo de copia al destino externo. Si el destino no está
+ * disponible (pendrive desenchufado, carpeta de Drive ausente), lo deja pendiente
+ * para reintentar más tarde. Nunca lanza: el respaldo externo es best-effort.
+ */
+function copiarARespaldo(srcFullPath: string): void {
+  const cfg = leerRespaldoCfg()
+  if (!cfg.dir) return
+  const name = basename(srcFullPath)
+  try {
+    if (!existsSync(cfg.dir)) throw new Error('destino no disponible')
+    const dest = respaldoDestDir(cfg.dir)
+    mkdirSync(dest, { recursive: true })
+    copyFileSync(srcFullPath, join(dest, name))
+    if (existsSync(recoveryKeyPath())) {
+      copyFileSync(recoveryKeyPath(), join(dest, 'caja.recovery.key'))
+    }
+    cfg.pendientes = cfg.pendientes.filter((p) => p !== name)
+    cfg.ultimo = new Date().toISOString()
+    escribirRespaldoCfg(cfg)
+  } catch {
+    if (!cfg.pendientes.includes(name)) cfg.pendientes.push(name)
+    escribirRespaldoCfg(cfg)
+  }
+}
+
+/**
+ * Reintenta subir las copias pendientes al destino externo. Se llama al arrancar
+ * y cada vez que se hace una copia, así "sigue intentando hasta que pueda subirlo".
+ */
+export function flushPendientesRespaldo(): void {
+  const cfg = leerRespaldoCfg()
+  if (!cfg.dir || !cfg.pendientes.length || !existsSync(cfg.dir)) return
+  let dest: string
+  try {
+    dest = respaldoDestDir(cfg.dir)
+    mkdirSync(dest, { recursive: true })
+  } catch {
+    return
+  }
+  const restantes: string[] = []
+  for (const name of cfg.pendientes) {
+    const src = join(backupsDir(), name)
+    try {
+      if (existsSync(src)) copyFileSync(src, join(dest, name))
+    } catch {
+      restantes.push(name)
+    }
+  }
+  try {
+    if (existsSync(recoveryKeyPath())) copyFileSync(recoveryKeyPath(), join(dest, 'caja.recovery.key'))
+  } catch {
+    /* no crítico */
+  }
+  cfg.pendientes = restantes
+  if (restantes.length === 0) cfg.ultimo = new Date().toISOString()
+  escribirRespaldoCfg(cfg)
+}
+
+/** Define (o quita con null) la carpeta de respaldo externo y empuja una copia ya. */
+export function setRespaldoDir(dir: string | null): void {
+  const cfg = leerRespaldoCfg()
+  if (dir && !existsSync(dir)) throw new Error('La carpeta elegida no existe o no está disponible.')
+  cfg.dir = dir
+  escribirRespaldoCfg(cfg)
+  if (dir) {
+    const file = dbFilePath()
+    if (existsSync(file)) {
+      const ts = new Date().toISOString().replace(/[:.]/g, '-')
+      const snap = join(backupsDir(), `caja_${ts}_respaldo-inicial.db.enc`)
+      try {
+        copyFileSync(file, snap)
+        copiarARespaldo(snap)
+      } catch {
+        /* best-effort */
+      }
+    }
+    empujarRecoveryARespaldo()
+  }
+}
+
+/** Fuerza un respaldo ahora: crea una copia y la empuja al destino externo. */
+export function respaldarAhora(): EstadoSeguridad {
+  const file = dbFilePath()
+  if (existsSync(file)) {
+    persist()
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const snap = join(backupsDir(), `caja_${ts}_manual.db.enc`)
+    copyFileSync(file, snap)
+    rotarBackups()
+    copiarARespaldo(snap)
+  }
+  flushPendientesRespaldo()
+  return estadoSeguridad()
+}
+
+export function estadoSeguridad(): EstadoSeguridad {
+  const cfg = leerRespaldoCfg()
+  return {
+    recuperacionConfigurada: existsSync(recoveryKeyPath()),
+    respaldoDir: cfg.dir,
+    respaldoUltimo: cfg.ultimo,
+    respaldoPendiente: cfg.pendientes.length
+  }
+}
+
+/**
+ * Restaura una copia usando la CONTRASEÑA de recuperación (sirve aunque la copia
+ * venga de otra PC / otro candado del sistema). Busca el archivo caja.recovery.key
+ * junto a la copia elegida; si no, usa el de esta PC. Tras restaurar, re-cifra con
+ * el candado local y refresca la llave de recuperación con la misma contraseña.
+ */
+export function restaurarConPassword(ruta: string, password: string): void {
+  if (!existsSync(ruta)) throw new Error('El archivo seleccionado no existe.')
+  const dir = dirname(ruta)
+  const recPath = existsSync(join(dir, 'caja.recovery.key'))
+    ? join(dir, 'caja.recovery.key')
+    : existsSync(recoveryKeyPath())
+      ? recoveryKeyPath()
+      : null
+  if (!recPath) {
+    throw new Error(
+      'No se encontró el archivo de recuperación (caja.recovery.key) junto a la copia ni en esta PC.'
+    )
+  }
+  let dbKey: Buffer
+  try {
+    dbKey = desenvolverClaveConPassword(readFileSync(recPath), password)
+  } catch {
+    throw new Error('Contraseña de recuperación incorrecta o archivo de recuperación dañado.')
+  }
+  let restored: Buffer
+  try {
+    restored = decrypt(readFileSync(ruta), dbKey)
+  } catch {
+    throw new Error('No se pudo descifrar la copia con esa contraseña de recuperación.')
+  }
+  let candidata: Database
+  try {
+    candidata = new SQL.Database(new Uint8Array(restored))
+    candidata.run('SELECT 1 FROM turnos LIMIT 1')
+    candidata.run('SELECT 1 FROM usuarios LIMIT 1')
+  } catch {
+    throw new Error('La copia no parece una base de CajaSnack válida.')
+  }
+  if (!bloqueada) backup('antes_de_restaurar')
+  db.close()
+  db = candidata
+  db.run(SCHEMA)
+  migrarColumnas()
+  bloqueada = false
+  persist() // re-cifra con el candado local de ESTA PC
+  try {
+    writeFileSync(recoveryKeyPath(), envolverClaveConPassword(key, password))
+  } catch {
+    /* la recuperación se puede reconfigurar luego */
+  }
 }
 
 function wasmPath(): string {
@@ -62,6 +307,14 @@ CREATE TABLE IF NOT EXISTS config (
   clave TEXT PRIMARY KEY,
   valor TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS auditoria (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL,
+  usuario_id INTEGER,
+  usuario_nombre TEXT NOT NULL,
+  accion TEXT NOT NULL,
+  detalle TEXT NOT NULL DEFAULT ''
+);
 `
 
 export async function initDb(): Promise<void> {
@@ -76,14 +329,74 @@ export async function initDb(): Promise<void> {
 
   const file = dbFilePath()
   if (existsSync(file)) {
-    const decrypted = decrypt(readFileSync(file), key)
-    db = new SQL.Database(new Uint8Array(decrypted))
+    try {
+      const decrypted = decrypt(readFileSync(file), key)
+      db = new SQL.Database(new Uint8Array(decrypted))
+    } catch {
+      // La base existe pero no se puede descifrar con la clave de esta PC
+      // (cambió el candado del SO / es de otra PC). NO la tocamos: queda
+      // "bloqueada" y el usuario la recupera con la contraseña de recuperación.
+      bloqueada = true
+      db = new SQL.Database()
+      db.run(SCHEMA) // esquema solo en memoria; NUNCA se persiste sobre el archivo bloqueado
+      return
+    }
   } else {
     db = new SQL.Database()
   }
   db.run(SCHEMA)
   migrarColumnas()
   persist()
+}
+
+/** ¿La base quedó bloqueada (no se pudo descifrar al arrancar)? */
+export function estaBloqueada(): boolean {
+  return bloqueada
+}
+
+/**
+ * Desbloquea en el mismo lugar una base que no abrió con la clave del SO,
+ * usando la contraseña de recuperación local (caja.recovery.key). Re-cifra con
+ * la clave local actual para que vuelva a abrir normalmente.
+ */
+export function desbloquearConPassword(password: string): void {
+  if (!bloqueada) return
+  const recPath = recoveryKeyPath()
+  if (!existsSync(recPath)) {
+    throw new Error(
+      'Esta PC no tiene contraseña de recuperación guardada. Usá "Restaurar desde una copia" y elegí un archivo .enc junto a su caja.recovery.key.'
+    )
+  }
+  let dbKey: Buffer
+  try {
+    dbKey = desenvolverClaveConPassword(readFileSync(recPath), password)
+  } catch {
+    throw new Error('Contraseña de recuperación incorrecta.')
+  }
+  let restored: Buffer
+  try {
+    restored = decrypt(readFileSync(dbFilePath()), dbKey)
+  } catch {
+    throw new Error('La contraseña no corresponde a estos datos (la recuperación no coincide con la base).')
+  }
+  let candidata: Database
+  try {
+    candidata = new SQL.Database(new Uint8Array(restored))
+    candidata.run('SELECT 1 FROM usuarios LIMIT 1')
+  } catch {
+    throw new Error('La base recuperada no es válida.')
+  }
+  db.close()
+  db = candidata
+  db.run(SCHEMA)
+  migrarColumnas()
+  bloqueada = false
+  persist() // re-cifra con la clave local de ESTA PC
+  try {
+    writeFileSync(recPath, envolverClaveConPassword(key, password))
+  } catch {
+    /* la recuperación se puede reconfigurar luego */
+  }
 }
 
 /** Agrega columnas nuevas a bases ya existentes (CREATE TABLE IF NOT EXISTS no las altera). */
@@ -111,8 +424,10 @@ export function backup(etiqueta = ''): void {
   if (!existsSync(file)) return
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const suf = etiqueta ? `_${etiqueta}` : ''
-  copyFileSync(file, join(backupsDir(), `caja_${ts}${suf}.db.enc`))
+  const dest = join(backupsDir(), `caja_${ts}${suf}.db.enc`)
+  copyFileSync(file, dest)
   rotarBackups()
+  copiarARespaldo(dest)
 }
 
 /**
@@ -128,6 +443,7 @@ export function backupDiario(): void {
   if (existsSync(dest)) return
   copyFileSync(file, dest)
   rotarBackups()
+  copiarARespaldo(dest)
 }
 
 /** Borra las copias más viejas dejando solo las MAX_BACKUPS más recientes. */
@@ -193,6 +509,9 @@ export function restaurarDesdeArchivo(ruta: string): void {
   backup('antes_de_restaurar')
   db.close()
   db = candidata
+  // La copia puede ser anterior a tablas/columnas nuevas: aseguramos el esquema.
+  db.run(SCHEMA)
+  migrarColumnas()
   persist()
 }
 

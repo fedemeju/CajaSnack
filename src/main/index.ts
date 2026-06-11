@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import icon from '../../resources/icon.png?asset'
-import { initDb } from './db'
+import { initDb, estaBloqueada, flushPendientesRespaldo } from './db'
 import { registerIpc } from './ipc'
 import { seedUsuarios } from './seed'
 import { boundsIniciales, seguirEstadoVentana } from './windowState'
@@ -90,8 +90,21 @@ if (!obtuvoLock) {
 
   app.whenReady().then(async () => {
     await initDb()
-    seedUsuarios()
     registerIpc()
+
+    // Si la base quedó bloqueada (no se pudo descifrar), NO sembramos usuarios
+    // ni persistimos/respaldamos: la ventana mostrará la pantalla de desbloqueo.
+    if (!estaBloqueada()) {
+      seedUsuarios()
+      // Reintenta el respaldo externo LOCAL pendiente (pendrive/Drive); es file I/O,
+      // no internet. La NUBE NO se toca al arrancar (la app opera 100% offline; la
+      // subida a la nube solo ocurre al cerrar un turno).
+      try {
+        flushPendientesRespaldo()
+      } catch {
+        /* el respaldo externo nunca debe romper el arranque */
+      }
+    }
 
     // El renderer informa si tiene un guardado pendiente/en curso.
     ipcMain.on('app:guardando', (_e, valor: boolean) => {

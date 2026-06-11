@@ -26,9 +26,10 @@ export function sumaMesas(lineas: LineaMesa[]): number {
   return lineas.reduce((acc, l) => acc + (l.monto || 0), 0)
 }
 
+/** Suma los renglones de rubro que NO están marcados como ya facturados. */
 export function sumaRubro(lineas: LineaRubro[]): number {
   if (!Array.isArray(lineas)) return 0
-  return lineas.reduce((acc, l) => acc + (l.monto || 0), 0)
+  return lineas.reduce((acc, l) => acc + (l.facturado ? 0 : l.monto || 0), 0)
 }
 
 export interface CuadreManana {
@@ -43,11 +44,18 @@ export interface CuadreManana {
 
 export function calcularManana(d: TurnoMananaData): CuadreManana {
   const totalPool = (d.poolUnidades || 0) * (d.poolPrecio || 0)
+  // La caja base puede ser un solo número (turnos viejos) o varios ingresos que
+  // se suman (cajaBaseItems). Si hay ítems, mandan ellos.
+  const cajaBase =
+    d.cajaBaseItems && d.cajaBaseItems.length ? sumaMesas(d.cajaBaseItems) : d.cajaBase || 0
+  const cumplesEventos = sumaMesas(d.cumplesEventos ?? [])
+  // El Pool se RESTA del total de la mañana (no es un ingreso, sale de la caja).
   const totalArriba =
-    (d.cajaBase || 0) +
+    cajaBase +
     (d.facturadoMostradorTelefono || 0) +
     (d.mesa49 || 0) +
     (d.recibidoMozo || 0) +
+    cumplesEventos -
     totalPool
   const proveedoresEfectivo = sumaGastosEfectivo(d.proveedores)
   const otrosEfectivo = sumaGastosEfectivo(d.otros)
@@ -80,6 +88,7 @@ export interface CuadreNoche {
   totalCumples: number // cumples + señas
   totalEventos: number // eventos + señas
   totalRubros: number // total de abajo (restaurante + bowling + cumples + eventos)
+  aporteCajaGeneral: number // efectivo en sobres + efectivo en caja - caja base
   diferencia: number // totalEntregado - totalRubros
   cuadra: boolean
 }
@@ -104,10 +113,15 @@ export function calcularNoche(d: TurnoNocheData): CuadreNoche {
     sumaMesas(d.transferencias) +
     sumaMesas(d.entregadoExtra)
 
+  // sumaRubro ya excluye las líneas marcadas como "ya facturadas" (cada renglón
+  // tiene su propio check), así que no se duplican con lo facturado en mesas.
   const totalCumples = sumaRubro(d.cumples)
   const totalEventos = sumaRubro(d.eventos)
 
   const totalRubros = totalRestaurante + (d.totalBowling || 0) + totalCumples + totalEventos
+
+  // Aporte a la caja general = efectivo dejado (sobres + caja) menos la caja base.
+  const aporteCajaGeneral = (d.efectivoEnSobres || 0) + (d.efectivoEnCaja || 0) - cajaBase
 
   const diferencia = totalEntregado - totalRubros
   return {
@@ -118,6 +132,7 @@ export function calcularNoche(d: TurnoNocheData): CuadreNoche {
     totalCumples,
     totalEventos,
     totalRubros,
+    aporteCajaGeneral,
     diferencia,
     cuadra: diferencia === 0
   }
@@ -138,7 +153,117 @@ export function cuadreDeTurno(t: Turno): CuadreTurno {
     return { total: c.totalArriba, cuadra: c.cuadra, diferencia: c.diferencia }
   }
   const c = calcularNoche(t.data as TurnoNocheData)
-  return { total: c.totalRestaurante, cuadra: c.cuadra, diferencia: c.diferencia }
+  // En noche, c.diferencia = entregado - rubros: >0 significa que SOBRÓ.
+  // Normalizamos al convenio de CuadreTurno (>0 falta, <0 sobra) invirtiendo el signo.
+  // El "total" muestra el total real de la noche (restaurante + bowling + cumples + eventos),
+  // que es justamente totalRubros. NO afecta el cuadre (cuadra/diferencia no cambian).
+  return { total: c.totalRubros, cuadra: c.cuadra, diferencia: -c.diferencia }
+}
+
+/** Monto de Bowling de un turno (0 si es turno mañana). */
+export function bowlingDeTurno(t: Turno): number {
+  if (t.tipo !== 'noche') return 0
+  return (t.data as TurnoNocheData).totalBowling || 0
+}
+
+/** Desglose de la facturación de un turno por rubro (todo 0 si es mañana). */
+export interface RubrosTurno {
+  restaurante: number
+  bowling: number
+  cumples: number
+  eventos: number
+  pedidoYa: number
+  pool: number
+  poolUnidades: number
+}
+
+export function rubrosDeTurno(t: Turno): RubrosTurno {
+  if (t.tipo !== 'noche')
+    return { restaurante: 0, bowling: 0, cumples: 0, eventos: 0, pedidoYa: 0, pool: 0, poolUnidades: 0 }
+  const d = t.data as TurnoNocheData
+  const c = calcularNoche(d)
+  const fullCumples = (d.cumples ?? []).reduce((a, l) => a + (l.monto || 0), 0)
+  const fullEventos = (d.eventos ?? []).reduce((a, l) => a + (l.monto || 0), 0)
+  // Los cumples/eventos FACTURADOS, Pedidos Ya y el Pool están dentro de lo
+  // facturado en mesas; los re-atribuimos a su rubro para mostrar el ingreso real
+  // de cada uno (el total no cambia).
+  const factCumples = fullCumples - c.totalCumples
+  const factEventos = fullEventos - c.totalEventos
+  const pedidoYa = d.pedidoYa || 0
+  const pool = (d.poolUnidades || 0) * (d.poolPrecio || 0)
+  // "Restaurante" = facturado + sin facturar, SIN la caja base (fondo inicial, no
+  // es ingreso) y SIN lo que ya se contó en cumples/eventos/Pedidos Ya/Pool.
+  const restauranteIngresos =
+    c.totalFacturado + c.totalSinFacturar - factCumples - factEventos - pedidoYa - pool
+  return {
+    restaurante: restauranteIngresos,
+    bowling: d.totalBowling || 0,
+    cumples: fullCumples,
+    eventos: fullEventos,
+    pedidoYa,
+    pool,
+    poolUnidades: d.poolUnidades || 0
+  }
+}
+
+/**
+ * Ingreso BRUTO de cumples y eventos de un turno, **incluyendo los facturados**
+ * (que no suman al cuadre del día, pero sí son ingresos a registrar para el Admin).
+ */
+export interface AgasajosTurno {
+  cumples: number
+  eventos: number
+  cumplesCant: number
+  eventosCant: number
+}
+
+export function agasajosDeTurno(t: Turno): AgasajosTurno {
+  if (t.tipo !== 'noche') return { cumples: 0, eventos: 0, cumplesCant: 0, eventosCant: 0 }
+  const d = t.data as TurnoNocheData
+  const sum = (arr: LineaRubro[] | undefined): number =>
+    (arr ?? []).reduce((a, l) => a + (l.monto || 0), 0)
+  const cnt = (arr: LineaRubro[] | undefined): number =>
+    (arr ?? []).filter((l) => (l.monto || 0) > 0 || (l.concepto || '').trim()).length
+  return {
+    cumples: sum(d.cumples),
+    eventos: sum(d.eventos),
+    cumplesCant: cnt(d.cumples),
+    eventosCant: cnt(d.eventos)
+  }
+}
+
+export function sumarAgasajos(turnos: Turno[]): AgasajosTurno {
+  return turnos.reduce(
+    (acc, t) => {
+      const a = agasajosDeTurno(t)
+      return {
+        cumples: acc.cumples + a.cumples,
+        eventos: acc.eventos + a.eventos,
+        cumplesCant: acc.cumplesCant + a.cumplesCant,
+        eventosCant: acc.eventosCant + a.eventosCant
+      }
+    },
+    { cumples: 0, eventos: 0, cumplesCant: 0, eventosCant: 0 }
+  )
+}
+
+/** Suma de rubros de una lista de turnos. */
+export function sumarRubros(turnos: Turno[]): RubrosTurno {
+  return turnos.reduce(
+    (acc, t) => {
+      const r = rubrosDeTurno(t)
+      return {
+        restaurante: acc.restaurante + r.restaurante,
+        bowling: acc.bowling + r.bowling,
+        cumples: acc.cumples + r.cumples,
+        eventos: acc.eventos + r.eventos,
+        pedidoYa: acc.pedidoYa + r.pedidoYa,
+        pool: acc.pool + r.pool,
+        poolUnidades: acc.poolUnidades + r.poolUnidades
+      }
+    },
+    { restaurante: 0, bowling: 0, cumples: 0, eventos: 0, pedidoYa: 0, pool: 0, poolUnidades: 0 }
+  )
 }
 
 /** Movimientos de un turno desglosados por categoría, para sumar en reportes. */
@@ -193,7 +318,7 @@ export function entradasSalidas(m: MovimientosTurno): {
   salidas: number
   balance: number
 } {
-  const entradas = m.mercadoPago + m.tarjetas + m.pedidosYa + m.efectivo
+  const entradas = m.mercadoPago + m.tarjetas + m.pedidosYa + m.efectivo + m.transferencias
   const salidas = m.proveedores + m.otrosGastos
   return { entradas, salidas, balance: entradas - salidas }
 }

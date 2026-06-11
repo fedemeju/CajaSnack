@@ -159,7 +159,8 @@ export function RubroEditor({
   items: LineaRubro[]
   onChange: (items: LineaRubro[]) => void
 }): JSX.Element {
-  const total = items.reduce((a, l) => a + (l.monto || 0), 0)
+  // El subtotal no cuenta los renglones marcados como "ya facturado".
+  const total = items.reduce((a, l) => a + (l.facturado ? 0 : l.monto || 0), 0)
   const [nuevo, setNuevo] = useState<number | null>(null)
   const upd = (i: number, patch: Partial<LineaRubro>): void => {
     onChange(items.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
@@ -203,6 +204,15 @@ export function RubroEditor({
             />
           </label>
           <MoneyInput value={l.monto} disabled={disabled} onChange={(m) => upd(i, { monto: m })} />
+          <label className="line-chk" title="Marcá si este ya está facturado (no suma al total)">
+            <input
+              type="checkbox"
+              checked={!!l.facturado}
+              disabled={disabled}
+              onChange={(e) => upd(i, { facturado: e.target.checked })}
+            />
+            Fact.
+          </label>
           {!disabled && (
             <button
               className="row-del"

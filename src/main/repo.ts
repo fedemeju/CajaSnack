@@ -1,9 +1,11 @@
 import bcrypt from 'bcryptjs'
 import { all, backup, backupDiario, get, lastInsertId, persist, run } from './db'
+import { flushNube } from './cloudSync'
 import type {
   EstadoBackup,
   FirmaEvento,
   GuardarTurnoInput,
+  RegistroAuditoria,
   Rol,
   TipoTurno,
   Turno,
@@ -37,6 +39,60 @@ export function marcarExportacion(): void {
   setConfig(CLAVE_ULTIMA_EXPORT, nowIso())
 }
 
+/**
+ * Deja una entrada en la bitácora de actividad (auditoría). No interrumpe la
+ * operación principal si algo falla: la auditoría nunca debe romper la app.
+ */
+export function registrarEvento(
+  usuarioId: number | null,
+  usuarioNombre: string,
+  accion: string,
+  detalle = ''
+): void {
+  try {
+    run('INSERT INTO auditoria (at, usuario_id, usuario_nombre, accion, detalle) VALUES (?, ?, ?, ?, ?)', [
+      nowIso(),
+      usuarioId,
+      usuarioNombre,
+      accion,
+      detalle
+    ])
+    persist()
+  } catch {
+    /* la auditoría es secundaria: si falla, seguimos */
+  }
+}
+
+function rowToAuditoria(r: Record<string, unknown>): RegistroAuditoria {
+  return {
+    id: Number(r.id),
+    at: String(r.at),
+    usuarioId: r.usuario_id != null ? Number(r.usuario_id) : null,
+    usuarioNombre: String(r.usuario_nombre ?? ''),
+    accion: String(r.accion ?? ''),
+    detalle: String(r.detalle ?? '')
+  }
+}
+
+/** Lista la bitácora de actividad (más reciente primero). Solo admin. */
+export function listarAuditoria(actorId: number, desde?: string, hasta?: string): RegistroAuditoria[] {
+  requireAdmin(actorId)
+  let sql = 'SELECT * FROM auditoria'
+  const params: unknown[] = []
+  const conds: string[] = []
+  if (desde) {
+    conds.push("substr(at, 1, 10) >= ?")
+    params.push(desde)
+  }
+  if (hasta) {
+    conds.push("substr(at, 1, 10) <= ?")
+    params.push(hasta)
+  }
+  if (conds.length) sql += ' WHERE ' + conds.join(' AND ')
+  sql += ' ORDER BY at DESC, id DESC LIMIT 1000'
+  return all(sql, params).map(rowToAuditoria)
+}
+
 /** Días desde la última exportación a archivo, para el recordatorio. */
 export function estadoBackup(actorId: number): EstadoBackup {
   requireAdmin(actorId)
@@ -59,7 +115,20 @@ export function login(usuario: string, password: string): Usuario | null {
   const r = get('SELECT * FROM usuarios WHERE usuario = ?', [usuario.trim().toLowerCase()])
   if (!r) return null
   if (!bcrypt.compareSync(password, String(r.password_hash))) return null
-  return rowToUsuario(r)
+  const u = rowToUsuario(r)
+  registrarEvento(u.id, u.nombre, 'Inició sesión')
+  return u
+}
+
+/** Valida una contraseña de administrador y devuelve el admin, o lanza error. */
+function validarAdmin(password: string): Usuario {
+  const admins = all("SELECT * FROM usuarios WHERE rol = 'admin'")
+  for (const r of admins) {
+    if (bcrypt.compareSync(password, String(r.password_hash))) {
+      return rowToUsuario(r)
+    }
+  }
+  throw new Error('Contraseña de administrador incorrecta.')
 }
 
 export function getUsuario(id: number): Usuario | null {
@@ -106,7 +175,10 @@ export function crearUsuario(
     bcrypt.hashSync(password, 10)
   ])
   persist()
-  return getUsuario(lastInsertId())!
+  const creado = getUsuario(lastInsertId())!
+  const actor = getUsuario(actorId)
+  registrarEvento(actorId, actor?.nombre ?? 'Admin', 'Creó usuario', `${creado.nombre} (${creado.usuario})`)
+  return creado
 }
 
 export function cambiarPassword(actorId: number, targetId: number, nueva: string): void {
@@ -118,6 +190,8 @@ export function cambiarPassword(actorId: number, targetId: number, nueva: string
   if (nueva.length < 4) throw new Error('La contraseña debe tener al menos 4 caracteres.')
   run('UPDATE usuarios SET password_hash = ? WHERE id = ?', [bcrypt.hashSync(nueva, 10), targetId])
   persist()
+  const objetivo = getUsuario(targetId)
+  registrarEvento(actor.id, actor.nombre, 'Cambió contraseña', objetivo?.nombre ?? `usuario #${targetId}`)
 }
 
 function parseFirmaLog(raw: unknown): FirmaEvento[] {
@@ -185,6 +259,7 @@ export function guardarTurno(input: GuardarTurnoInput): Turno {
   const dataJson = JSON.stringify(input.data)
 
   let id = input.id
+  let creadoAhora = false
   if (id) {
     const actual = obtenerTurno(id)
     if (!actual) throw new Error('El turno no existe.')
@@ -203,21 +278,52 @@ export function guardarTurno(input: GuardarTurnoInput): Turno {
       [input.fecha, input.tipo, input.usuarioId, estado, dataJson, ahora, ahora]
     )
     id = lastInsertId()
+    creadoAhora = true
   }
 
   persist()
   backupDiario()
-  if (input.cerrar) backup(`turno${id}`)
+  if (input.cerrar) {
+    backup(`turno${id}`)
+    // Al CERRAR el turno, subimos a la nube en segundo plano (por las dudas).
+    // Es best-effort y offline-safe: si no hay internet, queda pendiente y se
+    // reintenta en el próximo cierre. NUNCA bloquea ni rompe el cierre.
+    void flushNube().catch(() => {})
+  }
+
+  // Bitácora: registramos solo apertura y cierre (no cada autoguardado, sería ruido).
+  const tipoTxt = input.tipo === 'manana' ? 'mañana' : 'noche'
+  if (creadoAhora || input.cerrar) {
+    const autor = getUsuario(input.usuarioId)
+    const nombre = autor?.nombre ?? `usuario #${input.usuarioId}`
+    if (creadoAhora) registrarEvento(input.usuarioId, nombre, 'Abrió turno', `${tipoTxt} ${input.fecha}`)
+    if (input.cerrar) {
+      const cajero = (input.data as { cerradoPor?: string }).cerradoPor
+      registrarEvento(
+        input.usuarioId,
+        nombre,
+        'Cerró turno',
+        `${tipoTxt} ${input.fecha}${cajero ? ` · cajero: ${cajero}` : ''}`
+      )
+    }
+  }
   return obtenerTurno(id)!
 }
 
-/** Reabre un turno cerrado para corregirlo (p. ej. si se cerró sin querer). La firma se conserva. */
-export function reabrirTurno(turnoId: number): Turno {
+/**
+ * Reabre un turno cerrado para corregirlo. Para evitar que un turno ya cerrado
+ * y firmado se modifique sin control, exige la contraseña de un administrador.
+ * La firma se conserva. Queda registrado en la bitácora.
+ */
+export function reabrirTurno(turnoId: number, password: string): Turno {
+  const admin = validarAdmin(password)
   const turno = obtenerTurno(turnoId)
   if (!turno) throw new Error('El turno no existe.')
   if (turno.estado !== 'cerrado') return turno
   run('UPDATE turnos SET estado = ?, actualizado_at = ? WHERE id = ?', ['abierto', nowIso(), turnoId])
   persist()
+  const tipoTxt = turno.tipo === 'manana' ? 'mañana' : 'noche'
+  registrarEvento(admin.id, admin.nombre, 'Reabrió turno cerrado', `${tipoTxt} ${turno.fecha}`)
   return obtenerTurno(turnoId)!
 }
 
@@ -251,6 +357,7 @@ export function firmarApertura(turnoId: number, password: string): Turno {
     [firmante.id, ahora, JSON.stringify(log), ahora, turnoId]
   )
   persist()
+  registrarEvento(firmante.id, firmante.nombre, 'Firmó apertura', `noche ${turno.fecha}`)
   return obtenerTurno(turnoId)!
 }
 
@@ -275,6 +382,7 @@ export function modificarFirma(turnoId: number, password: string): Turno {
     [JSON.stringify(log), ahora, turnoId]
   )
   persist()
+  registrarEvento(firmante.id, firmante.nombre, 'Modificó firma de apertura', `noche ${turno.fecha}`)
   return obtenerTurno(turnoId)!
 }
 
@@ -294,6 +402,7 @@ export function borrarTurnos(actorId: number, password: string): number {
   if (cuantos > 0) backup('antes_de_borrar_turnos')
   run('DELETE FROM turnos')
   persist()
+  registrarEvento(actor.id, actor.nombre, 'Borró todos los turnos', `${cuantos} turno(s)`)
   return cuantos
 }
 

@@ -1,11 +1,19 @@
 import { useState } from 'react'
-import { turnoNocheVacio, type TurnoNocheData, type Turno, type Usuario } from '../../../shared/types'
+import {
+  turnoNocheVacio,
+  POOL_PRECIO_DEFECTO,
+  type TurnoNocheData,
+  type Turno,
+  type Usuario
+} from '../../../shared/types'
 import { calcularNoche } from '../../../shared/calc'
 import { fechaHora, fechaLinda, formatMoney } from '../lib/format'
 import { MesaEditor, MoneyField, PoolField, RubroEditor } from '../components/lines'
 import { useTurno } from '../lib/useTurno'
+import { enviarCierrePorMail } from '../lib/pdf'
 import { AbrirTurno, GuardadoBadge } from '../components/AbrirTurno'
-import { useConfirm } from '../components/Confirm'
+import { CerrarTurnoModal } from '../components/CerrarTurno'
+import { PedirClaveAdmin } from '../components/PedirClaveAdmin'
 
 function normalizarNoche(d: TurnoNocheData): TurnoNocheData {
   const ap = (d.apertura ?? {}) as Partial<TurnoNocheData['apertura']>
@@ -17,7 +25,7 @@ function normalizarNoche(d: TurnoNocheData): TurnoNocheData {
       notas: typeof ap.notas === 'string' ? ap.notas : ''
     },
     poolUnidades: typeof d.poolUnidades === 'number' ? d.poolUnidades : 0,
-    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : 6000,
+    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : POOL_PRECIO_DEFECTO,
     facturasProveedores: Array.isArray(d.facturasProveedores) ? d.facturasProveedores : [],
     vales: Array.isArray(d.vales) ? d.vales : [],
     transferencias: Array.isArray(d.transferencias) ? d.transferencias : []
@@ -26,7 +34,8 @@ function normalizarNoche(d: TurnoNocheData): TurnoNocheData {
 
 export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
   const t = useTurno<TurnoNocheData>('noche', user, turnoNocheVacio, normalizarNoche)
-  const confirm = useConfirm()
+  const [reabrirAbierto, setReabrirAbierto] = useState(false)
+  const [cerrando, setCerrando] = useState(false)
 
   if (!t.entrado) {
     return (
@@ -51,19 +60,8 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
   const setAp = (patch: Partial<TurnoNocheData['apertura']>): void =>
     set({ apertura: { ...data.apertura, ...patch } })
 
-  async function cerrarTurno(): Promise<void> {
-    if (!c.cuadra) {
-      const dif = formatMoney(Math.abs(c.diferencia))
-      const signo = c.diferencia > 0 ? 'SOBRA en lo entregado' : 'FALTA en lo entregado'
-      const ok = await confirm({
-        mensaje: `La caja NO cuadra. ${signo}: ${dif}.\n\n¿Cerrar el turno igual?`,
-        confirmar: 'Cerrar igual',
-        peligro: true
-      })
-      if (!ok) return
-    }
-    await t.cerrar()
-  }
+  const avisoDif =
+    (c.diferencia > 0 ? 'SOBRA ' : 'FALTA ') + formatMoney(Math.abs(c.diferencia))
 
   return (
     <div className="turno-page">
@@ -226,6 +224,13 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
               <span>Total Entregado</span>
               <span>{formatMoney(c.totalEntregado)}</span>
             </div>
+            <div className="aporte-caja">
+              <div className="aporte-caja-titulo">APORTE A CAJA GENERAL</div>
+              <div className="aporte-caja-fila">
+                <span>Efectivo en sobres + efectivo en caja − caja base</span>
+                <span className="aporte-caja-monto">{formatMoney(c.aporteCajaGeneral)}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -258,22 +263,41 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
           ← Volver
         </button>
         {readOnly ? (
-          <button
-            className="btn btn-primary"
-            onClick={async () => {
-              if (await confirm('¿Reabrir este turno cerrado para poder corregirlo?')) t.reabrir()
-            }}
-          >
+          <button className="btn btn-primary" onClick={() => setReabrirAbierto(true)}>
             Reabrir turno
           </button>
         ) : (
-          <button className="btn btn-primary" onClick={cerrarTurno}>
+          <button className="btn btn-primary" onClick={() => setCerrando(true)}>
             Cerrar turno
           </button>
         )}
       </div>
 
       {t.error && <div className="error">{t.error}</div>}
+
+      {reabrirAbierto && (
+        <PedirClaveAdmin
+          titulo="Reabrir turno cerrado"
+          mensaje="Este turno ya está cerrado. Para reabrirlo y corregirlo hace falta la contraseña de un administrador."
+          confirmar="Reabrir turno"
+          accion={(password) => t.reabrir(password)}
+          onListo={() => setReabrirAbierto(false)}
+          onClose={() => setReabrirAbierto(false)}
+        />
+      )}
+
+      {cerrando && (
+        <CerrarTurnoModal
+          cuadra={c.cuadra}
+          avisoDiferencia={avisoDif}
+          onConfirm={async (nombre) => {
+            const res = await t.cerrar(nombre)
+            if (res.ok) enviarCierrePorMail(res.data, nombre)
+            return res
+          }}
+          onClose={() => setCerrando(false)}
+        />
+      )}
     </div>
   )
 }

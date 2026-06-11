@@ -15,7 +15,17 @@ import {
 } from '../../../shared/calc'
 import { fechaLinda, formatMoney } from './format'
 
-export function exportarTurnoPDF(turno: Turno): void {
+/** Genera el PDF y lo ABRE en el visor del sistema (en vez de descargarlo). */
+async function abrir(doc: jsPDF, nombre: string): Promise<void> {
+  const bytes = new Uint8Array(doc.output('arraybuffer'))
+  const res = await window.api.abrirPDF(nombre, bytes)
+  if (!res.ok) {
+    // Si por algún motivo no se pudo abrir, caemos a la descarga clásica.
+    doc.save(nombre)
+  }
+}
+
+function construirTurnoPDF(turno: Turno): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const M = 48
   let y = 56
@@ -30,7 +40,12 @@ export function exportarTurnoPDF(turno: Turno): void {
   y += 18
   doc.text(`Fecha: ${fechaLinda(turno.fecha)}   ·   Cajero: ${turno.usuarioNombre}`, M, y)
   y += 14
-  doc.text(`Estado: ${turno.estado.toUpperCase()}`, M, y)
+  const cerro = (turno.data as { cerradoPor?: string }).cerradoPor
+  doc.text(
+    `Estado: ${turno.estado.toUpperCase()}${cerro ? `   ·   Cerró la caja: ${cerro}` : ''}`,
+    M,
+    y
+  )
   y += 22
 
   const line = (label: string, value: string, bold = false): void => {
@@ -134,6 +149,7 @@ export function exportarTurnoPDF(turno: Turno): void {
     mesas(d.transferencias)
     mesas(d.entregadoExtra)
     line('TOTAL ENTREGADO', formatMoney(c.totalEntregado), true)
+    line('APORTE A CAJA GENERAL (sobres + caja - caja base)', formatMoney(c.aporteCajaGeneral), true)
 
     section('RUBROS')
     line('Total Restaurante', formatMoney(c.totalRestaurante))
@@ -157,10 +173,39 @@ export function exportarTurnoPDF(turno: Turno): void {
     line('Resultado', c.cuadra ? 'CUADRA' : 'NO CUADRA', true)
   }
 
-  doc.save(`caja_${turno.tipo}_${turno.fecha}.pdf`)
+  return doc
 }
 
-export function exportarCierreMensualPDF(p: {
+/** Genera el PDF del turno y lo abre en el visor. */
+export async function exportarTurnoPDF(turno: Turno): Promise<void> {
+  await abrir(construirTurnoPDF(turno), `caja_${turno.tipo}_${turno.fecha}.pdf`)
+}
+
+/** Devuelve los bytes del PDF del turno (para adjuntar en un email, etc.). */
+export function bytesTurnoPDF(turno: Turno): Uint8Array {
+  return new Uint8Array(construirTurnoPDF(turno).output('arraybuffer'))
+}
+
+/**
+ * Envía el reporte del turno cerrado por email (best-effort, en segundo plano).
+ * Si el email no está configurado, el proceso principal simplemente no hace nada.
+ */
+export function enviarCierrePorMail(turno: Turno, cajero: string): void {
+  try {
+    const tipoLabel = turno.tipo === 'manana' ? 'Mañana' : 'Noche'
+    const bytes = bytesTurnoPDF(turno)
+    void window.api.enviarCierreMail(bytes, {
+      fecha: turno.fecha,
+      tipo: turno.tipo,
+      tipoLabel,
+      cajero
+    })
+  } catch {
+    /* el envío nunca debe romper el cierre */
+  }
+}
+
+export async function exportarCierreMensualPDF(p: {
   mesLabel: string
   anio: number
   turnos: number
@@ -172,7 +217,7 @@ export function exportarCierreMensualPDF(p: {
   neto: number
   sinCuadrar: number
   mov: MovimientosTurno
-}): void {
+}): Promise<void> {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const M = 48
   let y = 56
@@ -241,5 +286,5 @@ export function exportarCierreMensualPDF(p: {
   line('Proveedores', formatMoney(p.mov.proveedores))
   line('Otros gastos', formatMoney(p.mov.otrosGastos))
 
-  doc.save(`cierre_${p.anio}_${p.mesLabel}.pdf`)
+  await abrir(doc, `cierre_${p.anio}_${p.mesLabel}.pdf`)
 }
