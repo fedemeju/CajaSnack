@@ -16,7 +16,8 @@ import {
   entradasSalidas,
   bowlingDeTurno,
   sumarRubros,
-  sumarAgasajos
+  sumarAgasajos,
+  sumarSalidasCaja
 } from '../../../shared/calc'
 import { fechaHora, fechaLinda, formatMoney, hoyISO } from '../lib/format'
 import { exportarTurnoPDF, exportarCierreMensualPDF } from '../lib/pdf'
@@ -40,6 +41,7 @@ type AdminTab =
   | 'inicio'
   | 'reportes'
   | 'comparar'
+  | 'salidas'
   | 'bowling'
   | 'mozos'
   | 'control'
@@ -59,6 +61,7 @@ const NAV_GRUPOS: { titulo: string; items: NavDef[] }[] = [
     titulo: 'Análisis',
     items: [
       { id: 'comparar', icon: '⇄', label: 'Comparar' },
+      { id: 'salidas', icon: '💸', label: 'Salidas de caja' },
       { id: 'bowling', icon: '🎳', label: 'Bowling' },
       { id: 'mozos', icon: '🧑‍🍳', label: 'Mozos' }
     ]
@@ -220,6 +223,7 @@ export function Admin({
           {tab === 'inicio' && <Estadisticas user={user} />}
           {tab === 'reportes' && <Reportes user={user} />}
           {tab === 'comparar' && <Comparar user={user} />}
+          {tab === 'salidas' && <Salidas user={user} />}
           {tab === 'bowling' && <Bowling user={user} />}
           {tab === 'mozos' && <Mozos user={user} />}
           {tab === 'control' && <Control user={user} />}
@@ -1168,6 +1172,99 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
               </div>
             ))
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Salidas({ user }: { user: Usuario }): JSX.Element {
+  const now = new Date()
+  const [anchor, setAnchor] = useState({ y: now.getFullYear(), m: now.getMonth() })
+  const [turnos, setTurnos] = useState<Turno[]>([])
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const desde = new Date(anchor.y, anchor.m, 1).toLocaleDateString('en-CA')
+    const hasta = new Date(anchor.y, anchor.m + 1, 0).toLocaleDateString('en-CA')
+    window.api.listarTurnos(user.id, desde, hasta).then((res) => {
+      if (res.ok) {
+        setTurnos(res.data)
+        setError('')
+      } else setError(res.error)
+    })
+  }, [anchor.y, anchor.m, user.id])
+
+  function mover(delta: number): void {
+    const d = new Date(anchor.y, anchor.m + delta, 1)
+    setAnchor({ y: d.getFullYear(), m: d.getMonth() })
+  }
+
+  const key = monthKey(anchor.y, anchor.m)
+  const s = sumarSalidasCaja(turnos.filter((t) => t.fecha.slice(0, 7) === key))
+  const efectivoItems = [
+    { label: 'Vales', value: s.vales },
+    { label: 'Instructoras', value: s.instructoras },
+    { label: 'Proveedores', value: s.proveedoresEfectivo },
+    { label: 'Otros gastos', value: s.otrosEfectivo }
+  ]
+  const mpItems = [{ label: 'Proveedores', value: s.proveedoresMercadoPago }]
+  const totalEfectivo = efectivoItems.reduce((a, x) => a + x.value, 0)
+  const totalMP = mpItems.reduce((a, x) => a + x.value, 0)
+  const total = totalEfectivo + totalMP
+
+  return (
+    <div>
+      {error && <div className="error">{error}</div>}
+
+      <div className="card">
+        <div className="chart-head">
+          <button className="btn btn-ghost" onClick={() => mover(-1)} aria-label="Mes anterior">
+            ‹
+          </button>
+          <h2 style={{ margin: 0 }}>
+            Salidas de caja · {MESES_LARGO[anchor.m]} {anchor.y}
+          </h2>
+          <button className="btn btn-ghost" onClick={() => mover(1)} aria-label="Mes siguiente">
+            ›
+          </button>
+        </div>
+        <div className="card-body">
+          <p style={{ marginTop: 0, color: 'var(--muted)' }}>
+            Plata que <b>salió</b> de la caja en el mes, separada por medio de pago. Total:{' '}
+            <b>{formatMoney(total)}</b>.
+          </p>
+
+          <div className="salida-grupo">
+            <div className="salida-grupo-head">
+              <span>💵 Efectivo</span>
+              <span>{formatMoney(totalEfectivo)}</span>
+            </div>
+            {efectivoItems.map((x) => (
+              <div className="det-fila" key={x.label}>
+                <span>{x.label}</span>
+                <span className="num">{formatMoney(x.value)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="salida-grupo">
+            <div className="salida-grupo-head">
+              <span>📱 Mercado Pago</span>
+              <span>{formatMoney(totalMP)}</span>
+            </div>
+            {mpItems.map((x) => (
+              <div className="det-fila" key={x.label}>
+                <span>{x.label}</span>
+                <span className="num">{formatMoney(x.value)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="subtotal entrega" style={{ marginTop: 16 }}>
+            <span>Total salidas de caja</span>
+            <span>{formatMoney(total)}</span>
+          </div>
         </div>
       </div>
     </div>

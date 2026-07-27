@@ -64,6 +64,7 @@ export function calcularManana(d: TurnoMananaData): CuadreManana {
     (d.efectivoRetirado || 0) +
     (d.tarjetasRetiradas || 0) +
     sumaMesas(d.mercadoPago) +
+    sumaMesas(d.facturaLincoln ?? []) +
     (d.pedidosYa || 0) +
     proveedoresEfectivo +
     otrosEfectivo
@@ -336,4 +337,64 @@ export function sumarMovimientos(turnos: Turno[]): MovimientosTurno {
       otrosGastos: acc.otrosGastos + m.otrosGastos
     }
   }, MOVIMIENTOS_VACIO)
+}
+
+/** Suma de gastos pagados con Mercado Pago (lo que NO es efectivo). */
+export function sumaGastosMercadoPago(lineas: LineaGasto[]): number {
+  if (!Array.isArray(lineas)) return 0
+  return lineas.reduce((acc, l) => acc + ((l.medioPago ?? 'efectivo') === 'efectivo' ? 0 : l.monto || 0), 0)
+}
+
+/** Salidas de caja (plata que sale) de un turno, separadas por medio de pago. */
+export interface SalidasCaja {
+  // Efectivo
+  vales: number
+  instructoras: number
+  proveedoresEfectivo: number
+  otrosEfectivo: number
+  // Mercado Pago
+  proveedoresMercadoPago: number
+}
+
+const SALIDAS_VACIO: SalidasCaja = {
+  vales: 0,
+  instructoras: 0,
+  proveedoresEfectivo: 0,
+  otrosEfectivo: 0,
+  proveedoresMercadoPago: 0
+}
+
+export function salidasCajaTurno(t: Turno): SalidasCaja {
+  if (t.tipo === 'manana') {
+    const d = t.data as TurnoMananaData
+    return {
+      vales: 0,
+      instructoras: 0,
+      proveedoresEfectivo: sumaGastosEfectivo(d.proveedores),
+      otrosEfectivo: sumaGastosEfectivo(d.otros),
+      proveedoresMercadoPago: sumaGastosMercadoPago(d.proveedores)
+    }
+  }
+  const d = t.data as TurnoNocheData
+  return {
+    vales: sumaMesas(d.vales),
+    instructoras: d.instructoras || 0,
+    // En el turno noche las facturas de proveedores se pagan de la caja (efectivo).
+    proveedoresEfectivo: sumaMesas(d.facturasProveedores),
+    otrosEfectivo: 0,
+    proveedoresMercadoPago: 0
+  }
+}
+
+export function sumarSalidasCaja(turnos: Turno[]): SalidasCaja {
+  return turnos.reduce((acc, t) => {
+    const s = salidasCajaTurno(t)
+    return {
+      vales: acc.vales + s.vales,
+      instructoras: acc.instructoras + s.instructoras,
+      proveedoresEfectivo: acc.proveedoresEfectivo + s.proveedoresEfectivo,
+      otrosEfectivo: acc.otrosEfectivo + s.otrosEfectivo,
+      proveedoresMercadoPago: acc.proveedoresMercadoPago + s.proveedoresMercadoPago
+    }
+  }, SALIDAS_VACIO)
 }

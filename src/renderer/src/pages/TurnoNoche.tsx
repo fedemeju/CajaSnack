@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import {
   turnoNocheVacio,
-  POOL_PRECIO_DEFECTO,
   type TurnoNocheData,
   type Turno,
   type Usuario
 } from '../../../shared/types'
-import { calcularNoche } from '../../../shared/calc'
+import { calcularNoche, sumaMesas } from '../../../shared/calc'
 import { fechaHora, fechaLinda, formatMoney } from '../lib/format'
+import { getPoolPrecio } from '../lib/poolPrecio'
 import { MesaEditor, MoneyField, PoolField, RubroEditor } from '../components/lines'
 import { useTurno } from '../lib/useTurno'
 import { enviarCierrePorMail } from '../lib/pdf'
@@ -25,7 +25,7 @@ function normalizarNoche(d: TurnoNocheData): TurnoNocheData {
       notas: typeof ap.notas === 'string' ? ap.notas : ''
     },
     poolUnidades: typeof d.poolUnidades === 'number' ? d.poolUnidades : 0,
-    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : POOL_PRECIO_DEFECTO,
+    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : getPoolPrecio(),
     facturasProveedores: Array.isArray(d.facturasProveedores) ? d.facturasProveedores : [],
     vales: Array.isArray(d.vales) ? d.vales : [],
     transferencias: Array.isArray(d.transferencias) ? d.transferencias : []
@@ -33,9 +33,15 @@ function normalizarNoche(d: TurnoNocheData): TurnoNocheData {
 }
 
 export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
-  const t = useTurno<TurnoNocheData>('noche', user, turnoNocheVacio, normalizarNoche)
+  const t = useTurno<TurnoNocheData>(
+    'noche',
+    user,
+    () => ({ ...turnoNocheVacio(), poolPrecio: getPoolPrecio() }),
+    normalizarNoche
+  )
   const [reabrirAbierto, setReabrirAbierto] = useState(false)
   const [cerrando, setCerrando] = useState(false)
+  const [verFacturado, setVerFacturado] = useState(false)
 
   if (!t.entrado) {
     return (
@@ -53,6 +59,9 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
 
   const data = t.data
   const c = calcularNoche(data)
+  // Total facturado día y noche = Mozos de la apertura (lo que fichó el día) +
+  // subtotal de Mesas Fichadas (lo de la noche). Solo informativo, no toca el cuadre.
+  const totalFacturadoDiaNoche = sumaMesas(data.apertura?.mozos) + sumaMesas(data.mesasFacturadas)
   const readOnly = t.readOnly
   const aperturaFirmada = !!t.turno?.aprobadoPor
   const aperturaBloqueada = readOnly || aperturaFirmada
@@ -108,7 +117,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
             </div>
           </div>
           <div className="card card-rendir">
-            <h2>Mesas Sin Facturar</h2>
+            <h2>Otras Mesas</h2>
             <div className="card-body">
               <MesaEditor items={data.mesasSinFacturar} disabled={readOnly} onChange={(v) => set({ mesasSinFacturar: v })} />
             </div>
@@ -116,7 +125,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
 
           <div className="banner info" style={{ margin: 0 }}>
             <b>Total Restaurante</b> = Caja Base ({formatMoney(data.apertura.cajaBase)}) + Facturado (
-            {formatMoney(c.totalFacturado)}) + Sin Facturar ({formatMoney(c.totalSinFacturar)}) ={' '}
+            {formatMoney(c.totalFacturado)}) + Otras Mesas ({formatMoney(c.totalSinFacturar)}) ={' '}
             <b>{formatMoney(c.totalRestaurante)}</b>
           </div>
 
@@ -187,6 +196,9 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
             </div>
             <MoneyField label="Instructoras" value={data.instructoras} disabled={readOnly} onChange={(v) => set({ instructoras: v })} />
             <MoneyField label="Mercado Pago" value={data.mercadoPago} disabled={readOnly} onChange={(v) => set({ mercadoPago: v })} />
+            {!readOnly && (
+              <TraerMP onImport={(monto) => set({ mercadoPago: monto })} />
+            )}
             <div className="field" style={{ display: 'block' }}>
               <label>Vales (cada importe)</label>
               <div style={{ marginTop: 8 }}>
@@ -224,13 +236,6 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
               <span>Total Entregado</span>
               <span>{formatMoney(c.totalEntregado)}</span>
             </div>
-            <div className="aporte-caja">
-              <div className="aporte-caja-titulo">APORTE A CAJA GENERAL</div>
-              <div className="aporte-caja-fila">
-                <span>Efectivo en sobres + efectivo en caja − caja base</span>
-                <span className="aporte-caja-monto">{formatMoney(c.aporteCajaGeneral)}</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -256,6 +261,28 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
               ? `Sobraron ${formatMoney(c.diferencia)}`
               : `Faltó ${formatMoney(Math.abs(c.diferencia))}`}
         </div>
+      </div>
+
+      <div className="fact-diaynoche">
+        {verFacturado ? (
+          <div className="fact-diaynoche-open">
+            <div>
+              <div className="fact-diaynoche-label">Total facturado día y noche</div>
+              <div className="fact-diaynoche-sub">
+                Mozos apertura ({formatMoney(sumaMesas(data.apertura?.mozos))}) + Mesas Fichadas (
+                {formatMoney(sumaMesas(data.mesasFacturadas))})
+              </div>
+            </div>
+            <div className="fact-diaynoche-monto">{formatMoney(totalFacturadoDiaNoche)}</div>
+            <button type="button" className="btn btn-ghost" onClick={() => setVerFacturado(false)}>
+              Ocultar
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="btn" onClick={() => setVerFacturado(true)}>
+            Ver total facturado día y noche
+          </button>
+        )}
       </div>
 
       <div className="actions-bar">
@@ -290,14 +317,61 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
         <CerrarTurnoModal
           cuadra={c.cuadra}
           avisoDiferencia={avisoDif}
-          onConfirm={async (nombre) => {
-            const res = await t.cerrar(nombre)
-            if (res.ok) enviarCierrePorMail(res.data, nombre)
-            return res
-          }}
+          onConfirm={(nombre) => t.cerrar(nombre)}
+          enviarMail={(turno, nombre) => enviarCierrePorMail(turno, nombre)}
           onClose={() => setCerrando(false)}
         />
       )}
+    </div>
+  )
+}
+
+/** Botón que trae el total de Mercado Pago desde la extensión "Calculadora MP"
+ *  (vía portapapeles). Completa el campo Mercado Pago con QR + Point. */
+function TraerMP({ onImport }: { onImport: (monto: number) => void }): JSX.Element {
+  const [info, setInfo] = useState('')
+  const [err, setErr] = useState('')
+
+  async function traer(): Promise<void> {
+    setErr('')
+    setInfo('')
+    const res = await window.api.leerPortapapeles()
+    if (!res.ok) {
+      setErr('No se pudo leer el portapapeles.')
+      return
+    }
+    const txt = (res.data || '').trim()
+    const i = txt.indexOf('CAJASNACK-MP')
+    if (i < 0) {
+      setErr('No encontré datos de MP. En la extensión, tocá "Copiar para CajaSnack" y volvé a probar.')
+      return
+    }
+    try {
+      const p = JSON.parse(txt.slice(txt.indexOf('{', i)))
+      const mp = Math.round(Number(p.mercadoPago) || 0)
+      onImport(mp)
+      const point = Math.round(Number(p.point) || 0)
+      const trans = Math.round(Number(p.trans) || 0)
+      let msg = `✓ Mercado Pago (QR): ${formatMoney(mp)}.`
+      const aparte: string[] = []
+      if (point > 0) aparte.push(`Point ${formatMoney(point)}`)
+      if (trans > 0) aparte.push(`Transferencias ${formatMoney(trans)}`)
+      if (aparte.length) {
+        msg += ` Detectado aparte: ${aparte.join(' · ')} — cargalo donde corresponda.`
+      }
+      setInfo(msg)
+    } catch {
+      setErr('El texto del portapapeles no tiene el formato esperado.')
+    }
+  }
+
+  return (
+    <div style={{ margin: '2px 0 8px' }}>
+      <button type="button" className="btn-add-soft" onClick={traer}>
+        <span aria-hidden>⬇</span> Traer de MP (portapapeles)
+      </button>
+      {info && <div style={{ fontSize: 12, color: 'var(--ok)', marginTop: 5 }}>{info}</div>}
+      {err && <div style={{ fontSize: 12, color: 'var(--bad)', marginTop: 5 }}>{err}</div>}
     </div>
   )
 }

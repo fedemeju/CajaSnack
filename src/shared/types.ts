@@ -57,6 +57,8 @@ export interface TurnoMananaData {
   efectivoRetirado: number
   tarjetasRetiradas: number
   mercadoPago: LineaMesa[]
+  /** Factura Lincoln (uno o varios cobros). Suma al Total Entregado, igual que Mercado Pago. */
+  facturaLincoln?: LineaMesa[]
   pedidosYa: number
   /** Nombre de la persona que cerró la caja (se pide al cerrar el turno). */
   cerradoPor?: string
@@ -194,6 +196,9 @@ export interface EstadoNube {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
+/** Resultado del envío del cierre por email, para confirmar al cerrar el turno. */
+export type MailEnvioResultado = 'enviado' | 'pendiente' | 'sin-config'
+
 /** Precio por defecto del pool (unidad). Se usa al abrir turnos nuevos. */
 export const POOL_PRECIO_DEFECTO = 7000
 
@@ -213,6 +218,7 @@ export function turnoMananaVacio(): TurnoMananaData {
     efectivoRetirado: 0,
     tarjetasRetiradas: 0,
     mercadoPago: [],
+    facturaLincoln: [],
     pedidosYa: 0
   }
 }

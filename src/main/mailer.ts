@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import nodemailer from 'nodemailer'
-import type { EstadoMail } from '../shared/types'
+import type { EstadoMail, MailEnvioResultado } from '../shared/types'
 
 /**
  * Envío del cierre de turno por email (Gmail SMTP con contraseña de aplicación).
@@ -168,13 +168,17 @@ export async function flushPendientesMail(): Promise<void> {
  * Envía el cierre (PDF) por email. Best-effort: primero reintenta lo pendiente,
  * luego envía el actual; si falla (sin internet), lo deja pendiente. Nunca lanza.
  */
-export async function enviarCierre(pdfBytes: Uint8Array, meta: CierreMeta): Promise<void> {
+export async function enviarCierre(
+  pdfBytes: Uint8Array,
+  meta: CierreMeta
+): Promise<MailEnvioResultado> {
   const c = leerCfg()
-  if (!c) return
+  if (!c) return 'sin-config'
   const pdf = Buffer.from(pdfBytes)
   await flushPendientesMail().catch(() => {})
   try {
     await enviarUno(c, meta, pdf)
+    return 'enviado'
   } catch {
     try {
       const id = `${meta.fecha}_${meta.tipo}`
@@ -183,5 +187,6 @@ export async function enviarCierre(pdfBytes: Uint8Array, meta: CierreMeta): Prom
     } catch {
       /* si no se puede ni encolar, se perdió este envío (la copia local/nube siguen) */
     }
+    return 'pendiente'
   }
 }

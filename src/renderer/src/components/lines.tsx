@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { LineaGasto, LineaMesa, LineaRubro } from '../../../shared/types'
 import { formatMoney } from '../lib/format'
+import { setPoolPrecio } from '../lib/poolPrecio'
 import { MoneyInput } from './MoneyInput'
 
 interface BaseProps {
@@ -246,6 +247,19 @@ export function PoolField({
 }): JSX.Element {
   const total = (unidades || 0) * (precio || 0)
   const [editaPrecio, setEditaPrecio] = useState(false)
+  const [guardado, setGuardado] = useState(false)
+
+  // Al terminar de editar el precio, lo guarda como el precio por defecto para
+  // los próximos turnos (así no hay que reescribirlo cada apertura).
+  function cerrarEdicion(): void {
+    setEditaPrecio(false)
+    if (precio > 0) {
+      setPoolPrecio(precio)
+      setGuardado(true)
+      setTimeout(() => setGuardado(false), 2500)
+    }
+  }
+
   return (
     <div className="field pool-field">
       <label>Pool</label>
@@ -282,14 +296,18 @@ export function PoolField({
               value={precio}
               onChange={onPrecio}
               autoFocus
-              onBlur={() => setEditaPrecio(false)}
+              onBlur={cerrarEdicion}
             />
           </div>
         ) : (
           <span className="pool-precio">
             {formatMoney(precio)} c/u
             {!disabled && (
-              <button className="pool-edit" title="Cambiar precio" onClick={() => setEditaPrecio(true)}>
+              <button
+                className="pool-edit"
+                title="Cambiar precio (queda guardado para los próximos turnos)"
+                onClick={() => setEditaPrecio(true)}
+              >
                 ✎
               </button>
             )}
@@ -297,6 +315,11 @@ export function PoolField({
         )}
         <span className="pool-op">=</span>
         <b className="pool-total">{formatMoney(total)}</b>
+        {guardado && (
+          <span className="pool-guardado" title="Guardado como precio por defecto">
+            ✓ guardado
+          </span>
+        )}
       </div>
     </div>
   )

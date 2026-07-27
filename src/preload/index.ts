@@ -8,6 +8,7 @@ import type {
   EstadoSeguridad,
   GuardarTurnoInput,
   LoginPayload,
+  MailEnvioResultado,
   RegistroAuditoria,
   Rol,
   TipoTurno,
@@ -170,6 +171,9 @@ const api = {
   abrirPDF: (nombre: string, bytes: Uint8Array): Promise<ApiResult<string>> =>
     ipcRenderer.invoke('pdf:abrir', nombre, bytes),
 
+  /** Lee el portapapeles (para traer el total de la extensión Calculadora MP). */
+  leerPortapapeles: (): Promise<ApiResult<string>> => ipcRenderer.invoke('portapapeles:leer'),
+
   // ---- Envío del cierre por email ----
   estadoMail: (actorId: number): Promise<ApiResult<EstadoMail>> =>
     ipcRenderer.invoke('mail:estado', actorId),
@@ -188,7 +192,7 @@ const api = {
   enviarCierreMail: (
     bytes: Uint8Array,
     meta: { fecha: string; tipo: 'manana' | 'noche'; tipoLabel: string; cajero: string }
-  ): Promise<ApiResult<null>> => ipcRenderer.invoke('mail:enviarCierre', bytes, meta),
+  ): Promise<ApiResult<MailEnvioResultado>> => ipcRenderer.invoke('mail:enviarCierre', bytes, meta),
 
   /** Avisa al proceso principal si hay un guardado en vuelo (para advertir al cerrar). */
   notificarGuardando: (valor: boolean): void => ipcRenderer.send('app:guardando', valor)

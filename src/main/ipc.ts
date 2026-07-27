@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir, tmpdir } from 'node:os'
@@ -146,6 +146,9 @@ export function registerIpc(): void {
     if (err) throw new Error(err)
     return file
   })
+
+  // Lee el portapapeles (para traer el total de la extensión "Calculadora MP").
+  handle('portapapeles:leer', () => clipboard.readText())
 
   // ---- Datos / backups (solo admin) ----
 
@@ -372,8 +375,7 @@ export function registerIpc(): void {
 
   // Lo dispara el turno (mañana/noche) al cerrar; no requiere admin. Best-effort.
   handle('mail:enviarCierre', async (bytes, meta) => {
-    await enviarCierre(bytes as Uint8Array, meta as CierreMeta)
-    return null
+    return await enviarCierre(bytes as Uint8Array, meta as CierreMeta)
   })
 
   // Recuperación manual: baja la última copia de la nube y la restaura con la

@@ -88,6 +88,8 @@ function DetalleManana({ d }: { d: TurnoMananaData }): JSX.Element {
         <Fila label="Tarjetas Retiradas" value={formatMoney(d.tarjetasRetiradas)} />
         <Fila label="Mercado Pago" value={formatMoney(sumaMesas(d.mercadoPago))} />
         <Lineas items={d.mercadoPago} />
+        <Fila label="Factura Lincoln" value={formatMoney(sumaMesas(d.facturaLincoln ?? []))} />
+        <Lineas items={d.facturaLincoln ?? []} />
         <Fila label="Pedidos Ya" value={formatMoney(d.pedidosYa)} />
         <Fila label="Proveedores (efectivo)" value={formatMoney(c.proveedoresEfectivo)} />
         <Fila label="Otros gastos (efectivo)" value={formatMoney(c.otrosEfectivo)} />
@@ -141,7 +143,7 @@ function DetalleNoche({ turno }: { turno: Turno }): JSX.Element {
       <Seccion titulo="Restaurante">
         <Fila label="Mesas fichadas" value={formatMoney(c.totalFacturado)} />
         <Lineas items={d.mesasFacturadas} />
-        <Fila label="Mesas sin facturar" value={formatMoney(c.totalSinFacturar)} />
+        <Fila label="Otras mesas" value={formatMoney(c.totalSinFacturar)} />
         <Lineas items={d.mesasSinFacturar} />
         <Fila label="TOTAL RESTAURANTE" value={formatMoney(c.totalRestaurante)} fuerte />
       </Seccion>

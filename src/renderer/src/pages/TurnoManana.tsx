@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   turnoMananaVacio,
-  POOL_PRECIO_DEFECTO,
   type LineaMesa,
   type LineaRubro,
   type Turno,
@@ -11,6 +10,7 @@ import {
 } from '../../../shared/types'
 import { calcularManana, calcularNoche } from '../../../shared/calc'
 import { fechaLinda, formatMoney } from '../lib/format'
+import { getPoolPrecio } from '../lib/poolPrecio'
 import { GastoEditor, MesaEditor, MoneyField, PoolField } from '../components/lines'
 import { useTurno } from '../lib/useTurno'
 import { enviarCierrePorMail } from '../lib/pdf'
@@ -35,15 +35,21 @@ function normalizarManana(d: TurnoMananaData): TurnoMananaData {
     cajaBaseItems,
     cumplesEventos,
     poolUnidades: typeof d.poolUnidades === 'number' ? d.poolUnidades : 0,
-    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : POOL_PRECIO_DEFECTO,
+    poolPrecio: typeof d.poolPrecio === 'number' && d.poolPrecio > 0 ? d.poolPrecio : getPoolPrecio(),
     mercadoPago: Array.isArray(legacy.mercadoPago)
       ? (legacy.mercadoPago as TurnoMananaData['mercadoPago'])
-      : []
+      : [],
+    facturaLincoln: Array.isArray(d.facturaLincoln) ? d.facturaLincoln : []
   }
 }
 
 export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
-  const t = useTurno<TurnoMananaData>('manana', user, turnoMananaVacio, normalizarManana)
+  const t = useTurno<TurnoMananaData>(
+    'manana',
+    user,
+    () => ({ ...turnoMananaVacio(), poolPrecio: getPoolPrecio() }),
+    normalizarManana
+  )
   const [reabrirAbierto, setReabrirAbierto] = useState(false)
   const [cerrando, setCerrando] = useState(false)
 
@@ -166,6 +172,17 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
                 />
               </div>
             </div>
+            <div className="field" style={{ display: 'block' }}>
+              <label>Factura Lincoln (cada cobro)</label>
+              <div style={{ marginTop: 8 }}>
+                <MesaEditor
+                  items={data.facturaLincoln ?? []}
+                  disabled={readOnly}
+                  placeholder="Detalle (opcional)"
+                  onChange={(v) => set({ facturaLincoln: v })}
+                />
+              </div>
+            </div>
             <MoneyField label="Pedidos Ya" value={data.pedidosYa} disabled={readOnly} onChange={(v) => set({ pedidosYa: v })} />
             <div className="gastos-destacado">
               <div className="gastos-destacado-titulo">Gastos pagados (salen de la caja)</div>
@@ -245,11 +262,8 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
         <CerrarTurnoModal
           cuadra={cuadre.cuadra}
           avisoDiferencia={avisoDif}
-          onConfirm={async (nombre) => {
-            const res = await t.cerrar(nombre)
-            if (res.ok) enviarCierrePorMail(res.data, nombre)
-            return res
-          }}
+          onConfirm={(nombre) => t.cerrar(nombre)}
+          enviarMail={(turno, nombre) => enviarCierrePorMail(turno, nombre)}
           onClose={() => setCerrando(false)}
         />
       )}
@@ -405,11 +419,11 @@ function CierreAnterior({ fecha }: { fecha: string }): JSX.Element | null {
               />
               <Fila label="Total Mesas Facturadas" value={c.totalFacturado} />
               <ListaDetalle
-                titulo="Mesas Sin Facturar"
+                titulo="Otras Mesas"
                 items={(d.mesasSinFacturar ?? []).filter((m) => m.monto)}
                 campo="detalle"
               />
-              <Fila label="Total Mesas Sin Facturar" value={c.totalSinFacturar} />
+              <Fila label="Total Otras Mesas" value={c.totalSinFacturar} />
               <Fila label="Total Restaurante" value={c.totalRestaurante} />
 
               <h3 className="prev-titulo">Rubros</h3>

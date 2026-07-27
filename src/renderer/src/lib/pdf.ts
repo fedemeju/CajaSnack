@@ -3,6 +3,7 @@ import type {
   LineaGasto,
   LineaMesa,
   LineaRubro,
+  MailEnvioResultado,
   Turno,
   TurnoMananaData,
   TurnoNocheData
@@ -98,6 +99,8 @@ function construirTurnoPDF(turno: Turno): jsPDF {
     line('Tarjetas Retiradas', formatMoney(d.tarjetasRetiradas))
     line('Mercado Pago', formatMoney(d.mercadoPago.reduce((a, m) => a + (m.monto || 0), 0)))
     mesas(d.mercadoPago)
+    line('Factura Lincoln', formatMoney((d.facturaLincoln ?? []).reduce((a, m) => a + (m.monto || 0), 0)))
+    mesas(d.facturaLincoln ?? [])
     line('Pedidos Ya', formatMoney(d.pedidosYa))
     line('Proveedores (efectivo)', formatMoney(c.proveedoresEfectivo))
     line('Otros gastos (efectivo)', formatMoney(c.otrosEfectivo))
@@ -128,9 +131,9 @@ function construirTurnoPDF(turno: Turno): jsPDF {
     section('MESAS FACTURADAS')
     mesas(d.mesasFacturadas)
     line('Subtotal Facturado', formatMoney(c.totalFacturado), true)
-    section('MESAS SIN FACTURAR')
+    section('OTRAS MESAS')
     mesas(d.mesasSinFacturar)
-    line('Subtotal Sin Facturar', formatMoney(c.totalSinFacturar), true)
+    line('Subtotal Otras Mesas', formatMoney(c.totalSinFacturar), true)
     line('TOTAL RESTAURANTE', formatMoney(c.totalRestaurante), true)
 
     section('ENTREGADO')
@@ -190,18 +193,23 @@ export function bytesTurnoPDF(turno: Turno): Uint8Array {
  * Envía el reporte del turno cerrado por email (best-effort, en segundo plano).
  * Si el email no está configurado, el proceso principal simplemente no hace nada.
  */
-export function enviarCierrePorMail(turno: Turno, cajero: string): void {
+export async function enviarCierrePorMail(
+  turno: Turno,
+  cajero: string
+): Promise<MailEnvioResultado> {
   try {
     const tipoLabel = turno.tipo === 'manana' ? 'Mañana' : 'Noche'
     const bytes = bytesTurnoPDF(turno)
-    void window.api.enviarCierreMail(bytes, {
+    const res = await window.api.enviarCierreMail(bytes, {
       fecha: turno.fecha,
       tipo: turno.tipo,
       tipoLabel,
       cajero
     })
+    return res.ok ? res.data : 'pendiente'
   } catch {
     /* el envío nunca debe romper el cierre */
+    return 'pendiente'
   }
 }
 
