@@ -1,4 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import {
+  ArrowLeftRight,
+  Banknote,
+  CalendarCheck,
+  ChartColumn,
+  ConciergeBell,
+  DatabaseBackup,
+  FileText,
+  HandCoins,
+  History,
+  Lock,
+  LockOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Smartphone,
+  TriangleAlert,
+  Trophy,
+  Users
+} from 'lucide-react'
+import { PinoBowling } from '../components/Rotulo'
 import type {
   BackupInfo,
   EstadoBackup,
@@ -87,36 +107,38 @@ type AdminTab =
 
 interface NavDef {
   id: AdminTab
-  icon: string
+  icon: ReactNode
   label: string
 }
+
+const ICO = { size: 18, strokeWidth: 2 }
 
 const NAV_GRUPOS: { titulo: string; items: NavDef[] }[] = [
   {
     titulo: 'Análisis',
     items: [
-      { id: 'comparar', icon: '⇄', label: 'Comparar' },
-      { id: 'salidas', icon: '💸', label: 'Salidas de caja' },
-      { id: 'bowling', icon: '🎳', label: 'Bowling' },
-      { id: 'mozos', icon: '🧑‍🍳', label: 'Mozos' }
+      { id: 'comparar', icon: <ArrowLeftRight {...ICO} />, label: 'Comparar' },
+      { id: 'salidas', icon: <HandCoins {...ICO} />, label: 'Salidas de caja' },
+      { id: 'bowling', icon: <PinoBowling size={18} />, label: 'Bowling' },
+      { id: 'mozos', icon: <ConciergeBell {...ICO} />, label: 'Mozos' }
     ]
   },
   {
     titulo: 'Control',
     items: [
-      { id: 'control', icon: '⚠', label: 'Control' },
-      { id: 'actividad', icon: '📋', label: 'Actividad' }
+      { id: 'control', icon: <TriangleAlert {...ICO} />, label: 'Control' },
+      { id: 'actividad', icon: <History {...ICO} />, label: 'Actividad' }
     ]
   },
   {
     titulo: 'Cierres',
-    items: [{ id: 'cierre', icon: '🗓', label: 'Cierre mensual' }]
+    items: [{ id: 'cierre', icon: <CalendarCheck {...ICO} />, label: 'Cierre mensual' }]
   },
   {
     titulo: 'Administración',
     items: [
-      { id: 'usuarios', icon: '👥', label: 'Usuarios' },
-      { id: 'datos', icon: '💾', label: 'Datos y backups' }
+      { id: 'usuarios', icon: <Users {...ICO} />, label: 'Usuarios' },
+      { id: 'datos', icon: <DatabaseBackup {...ICO} />, label: 'Datos y backups' }
     ]
   }
 ]
@@ -198,13 +220,15 @@ export function Admin({
           }
           aria-label="Expandir o contraer menú"
         >
-          <span className="sidebar-icon">{colapsado ? '☰' : '«'}</span>
+          <span className="sidebar-icon">
+            {colapsado ? <PanelLeftOpen {...ICO} /> : <PanelLeftClose {...ICO} />}
+          </span>
           <span className="sidebar-label">Contraer</span>
         </button>
 
         <nav className="sidebar-nav">
-          <NavItem id="inicio" icon="📈" label="Estadísticas" />
-          <NavItem id="reportes" icon="📊" label="Reportes" />
+          <NavItem id="inicio" icon={<ChartColumn {...ICO} />} label="Estadísticas" />
+          <NavItem id="reportes" icon={<FileText {...ICO} />} label="Reportes" />
 
           {NAV_GRUPOS.map((g) => (
             <div className="sidebar-group" key={g.titulo}>
@@ -224,7 +248,7 @@ export function Admin({
           }
           aria-label={fijado ? 'Desbloquear barra' : 'Fijar barra'}
         >
-          <span className="sidebar-icon">{fijado ? '🔒' : '🔓'}</span>
+          <span className="sidebar-icon">{fijado ? <Lock {...ICO} /> : <LockOpen {...ICO} />}</span>
           <span className="sidebar-label">{fijado ? 'Posición fijada' : 'Fijar posición'}</span>
         </button>
       </aside>
@@ -1316,7 +1340,7 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
               <div className="medio-fila" key={d.nombre}>
                 <div className="medio-cabecera">
                   <span>
-                    {i === 0 ? '🏆 ' : ''}
+                    {i === 0 ? <Trophy size={15} className="ico-trofeo" /> : null}
                     {d.nombre} <span style={{ color: 'var(--muted)' }}>· {d.turnos} turno{d.turnos === 1 ? '' : 's'}</span>
                   </span>
                   <span style={{ fontWeight: 700 }}>{formatMoney(d.total)}</span>
@@ -1516,7 +1540,7 @@ function Salidas({ user }: { user: Usuario }): JSX.Element {
 
           <div className="salida-grupo">
             <div className="salida-grupo-head">
-              <span>💵 Efectivo</span>
+              <span className="con-ico"><Banknote size={17} /> Efectivo</span>
               <span>{formatMoney(totalEfectivo)}</span>
             </div>
             {efectivoItems.map((x) =>
@@ -1597,7 +1621,7 @@ function Salidas({ user }: { user: Usuario }): JSX.Element {
 
           <div className="salida-grupo">
             <div className="salida-grupo-head">
-              <span>📱 Mercado Pago</span>
+              <span className="con-ico"><Smartphone size={17} /> Mercado Pago</span>
               <span>{formatMoney(totalMP)}</span>
             </div>
             {mpItems.map((x) => (
@@ -1608,7 +1632,7 @@ function Salidas({ user }: { user: Usuario }): JSX.Element {
             ))}
           </div>
 
-          <div className="subtotal entrega" style={{ marginTop: 16 }}>
+          <div className="subtotal neutro" style={{ marginTop: 16 }}>
             <span>Total salidas de caja</span>
             <span>{formatMoney(total)}</span>
           </div>
@@ -1749,7 +1773,7 @@ function Bowling({ user }: { user: Usuario }): JSX.Element {
                 <div className="medio-fila" key={d.nombre}>
                   <div className="medio-cabecera">
                     <span>
-                      {i === 0 ? '🏆 ' : ''}
+                      {i === 0 ? <Trophy size={15} className="ico-trofeo" /> : null}
                       {d.nombre}{' '}
                       <span style={{ color: 'var(--muted)' }}>
                         · {d.noches} noche{d.noches === 1 ? '' : 's'}
@@ -1926,7 +1950,7 @@ function Mozos({ user }: { user: Usuario }): JSX.Element {
               <div className="medio-fila" key={x.mozo}>
                 <div className="medio-cabecera">
                   <span>
-                    {i === 0 ? '🏆 ' : ''}
+                    {i === 0 ? <Trophy size={15} className="ico-trofeo" /> : null}
                     {x.mozo}{' '}
                     <span style={{ color: 'var(--muted)' }}>
                       · {x.noches} noche{x.noches === 1 ? '' : 's'}

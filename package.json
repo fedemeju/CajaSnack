@@ -1,6 +1,6 @@
 {
   "name": "cajasnack",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Caja del restaurante Snack Bowling (turnos mañana/noche, offline)",
   "main": "./out/main/index.js",
   "author": "Snack Bowling",
@@ -66,10 +66,11 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
       "createDesktopShortcut": true,
-      "shortcutName": "CajaSnack"
+      "shortcutName": "CajaSnack",
+      "runAfterFinish": true
     }
   }
 }

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 
 /** Pino de bowling (Lucide no tiene uno). Mismo estilo de trazo que los demás íconos. */
-function PinoBowling({ size = 17 }: { size?: number }): JSX.Element {
+export function PinoBowling({ size = 17 }: { size?: number }): JSX.Element {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2c-1.7 0-2.6 1.4-2.3 3.2.2 1.2.8 2 .8 2.8 0 1-1.9 2.6-2.4 5.4-.6 3.3.5 6.6 1.6 8.6h4.6c1.1-2 2.2-5.3 1.6-8.6-.5-2.8-2.4-4.4-2.4-5.4 0-.8.6-1.6.8-2.8C14.6 3.4 13.7 2 12 2z" />

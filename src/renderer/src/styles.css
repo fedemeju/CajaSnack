@@ -1084,7 +1084,6 @@ input[type='date']:hover::-webkit-calendar-picker-indicator {
 .btn:focus-visible,
 .tab:focus-visible,
 .row-del:focus-visible,
-.chart-col:focus-visible,
 .btn-add-soft:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
@@ -1304,7 +1303,7 @@ input[type='date']:hover::-webkit-calendar-picker-indicator {
   --logo-size: 52px;
   display: flex;
   justify-content: center;
-  margin: 0 auto 6px;
+  margin: 2px auto 26px;
 }
 
 .login-card p {
@@ -1618,7 +1617,10 @@ input[type='date']:hover::-webkit-calendar-picker-indicator {
 .sidebar-icon {
   flex: 0 0 22px;
   width: 22px;
-  text-align: center;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 17px;
   line-height: 1;
 }
@@ -1806,9 +1808,8 @@ input[type='date']:hover::-webkit-calendar-picker-indicator {
 }
 
 .stat .stat-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 12px;
+  letter-spacing: 0;
   color: var(--muted);
   font-weight: 600;
 }
@@ -1987,77 +1988,6 @@ table.report tr:hover td {
 
 .legend-dot.out {
   background: var(--out);
-}
-
-.chart {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.chart-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px 4px;
-  border-radius: var(--radius-sm);
-  transition: background 0.12s;
-}
-
-.chart-col:hover {
-  background: var(--surface-2);
-}
-
-.chart-col.active {
-  background: var(--primary-soft);
-}
-
-.chart-up {
-  height: 90px;
-  width: 42%;
-  display: flex;
-  align-items: flex-end;
-}
-
-.chart-down {
-  height: 60px;
-  width: 42%;
-  display: flex;
-  align-items: flex-start;
-}
-
-.chart-zero {
-  width: 100%;
-  border-top: 1px dashed var(--border-strong);
-}
-
-.bar {
-  width: 100%;
-}
-
-.bar-in {
-  background: var(--ok);
-  border-radius: 4px 4px 0 0;
-}
-
-.bar-out {
-  background: var(--out);
-  border-radius: 0 0 4px 4px;
-}
-
-.chart-label {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.chart-col.active .chart-label {
-  color: var(--primary);
-  font-weight: 700;
 }
 
 /* ---- Gráficos: paleta de categorías (validada para daltonismo, claro y oscuro) ---- */
@@ -2772,4 +2702,45 @@ table.report tr:hover td {
   width: 16px;
   height: 16px;
   cursor: pointer;
+}
+
+/* ---- Íconos en el admin ---- */
+.ico-trofeo {
+  color: #d99a00;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+:root[data-theme='dark'] .ico-trofeo {
+  color: #f5b82e;
+}
+.con-ico {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.con-ico svg {
+  color: var(--muted);
+}
+/* Total neutro (ej. salidas de caja): sin el verde de 'entregado'. */
+.subtotal.neutro {
+  align-items: center;
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-top: 0;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  font-size: 14px;
+  font-weight: 600;
+}
+.subtotal.neutro > span:last-child {
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.5px;
+}
+/* Montos dentro de una fila con barra (ej. conciliación del cierre): tamaño medio y color de texto. */
+.medio-cabecera .summary-value {
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: -0.3px;
+  color: var(--text);
 }

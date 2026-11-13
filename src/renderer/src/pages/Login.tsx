@@ -22,7 +22,6 @@ export function Login({ onLogin }: { onLogin: (u: Usuario) => void }): JSX.Eleme
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         <Logo className="login-logo" fondoClaro />
-        <p>Caja de Snack Bowling</p>
 
         <label htmlFor="u">Usuario</label>
         <input
