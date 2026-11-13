@@ -192,7 +192,7 @@ select {
   white-space: nowrap;
 }
 .logo-snack {
-  color: var(--primary);
+  color: inherit;
 }
 .logo-sub {
   margin-top: calc(var(--logo-size) * 0.1);
@@ -207,7 +207,7 @@ select {
   color: #0f172a;
 }
 .logo-fondo-claro .logo-snack {
-  color: #2563eb;
+  color: inherit;
 }
 .logo-fondo-claro .logo-sub {
   color: #64748b;
@@ -1938,9 +1938,9 @@ table.report tr:hover td {
 }
 
 .counter-value {
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.4px;
   margin-top: 4px;
 }
 
@@ -1978,6 +1978,7 @@ table.report tr:hover td {
   height: 10px;
   border-radius: 3px;
   display: inline-block;
+  flex: 0 0 auto;
 }
 
 .legend-dot.in {
@@ -2059,6 +2060,264 @@ table.report tr:hover td {
   font-weight: 700;
 }
 
+/* ---- Gráficos: paleta de categorías (validada para daltonismo, claro y oscuro) ---- */
+:root {
+  --cat-1: #2a78d6; /* azul */
+  --cat-2: #eb6834; /* naranja */
+  --cat-3: #1baf7a; /* aqua */
+  --cat-4: #eda100; /* amarillo */
+  --cat-5: #e87ba4; /* magenta */
+  --cat-6: #008300; /* verde */
+  --viz-grid: #eceef1;
+  --viz-base: #cfd4dc;
+}
+:root[data-theme='dark'] {
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --viz-grid: #30353f;
+  --viz-base: #4a515e;
+}
+
+/* ---- Gráfico de entradas y salidas por mes ---- */
+.ec {
+  padding: 6px 2px 0;
+}
+.ec-plot {
+  position: relative;
+  margin-left: 52px; /* lugar para los montos del eje */
+}
+.ec-grid,
+.ec-base {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid var(--viz-grid);
+}
+.ec-base {
+  border-top-color: var(--viz-base);
+}
+.ec-tick {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: -8px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ec-cols {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+.ec-col {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ec-col:hover {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.ec-col.activo {
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+.ec-col:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+/* Barras finas, punta redondeada y base recta (crecen desde la línea base). */
+.ec-bar {
+  position: absolute;
+  left: 50%;
+  width: 26px;
+  margin-left: -13px;
+  opacity: 0.62;
+  transition: opacity 0.15s;
+}
+.ec-bar.in {
+  background: var(--ok);
+  border-radius: 5px 5px 0 0;
+}
+.ec-bar.out {
+  background: var(--out);
+  border-radius: 0 0 5px 5px;
+}
+.ec-col:hover .ec-bar,
+.ec-col.activo .ec-bar {
+  opacity: 1;
+}
+.ec-valor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  pointer-events: none;
+}
+/* Globito con el detalle del mes. */
+.ec-tip {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 4px);
+  z-index: 3;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  font-size: 12.5px;
+  color: var(--text-2);
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.ec-col:hover .ec-tip,
+.ec-col:focus-visible .ec-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.ec-tip b {
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.ec-tip > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ec-tip em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text);
+  margin-left: auto;
+  padding-left: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.ec-tip .legend-dot {
+  width: 8px;
+  height: 8px;
+}
+.ec-tip-bal {
+  border-top: 1px solid var(--border);
+  padding-top: 5px;
+  margin-top: 1px;
+}
+.ec-tip-sub {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+/* Los meses de las puntas: el globito se abre hacia adentro. */
+.ec-col:first-child .ec-tip {
+  left: 0;
+  transform: translate(0, 4px);
+}
+.ec-col:first-child:hover .ec-tip,
+.ec-col:first-child:focus-visible .ec-tip {
+  transform: translate(0, 0);
+}
+.ec-col:last-child .ec-tip {
+  left: auto;
+  right: 0;
+  transform: translate(0, 4px);
+}
+.ec-col:last-child:hover .ec-tip,
+.ec-col:last-child:focus-visible .ec-tip {
+  transform: translate(0, 0);
+}
+.ec-x {
+  display: flex;
+  margin-left: 52px;
+  padding-top: 8px;
+}
+.ec-x span {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ec-x span.activo {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* ---- Barra única dividida en partes (de dónde viene la plata) ---- */
+.seg-barra {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+  margin: 4px 0 20px;
+}
+.seg-parte {
+  min-width: 3px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* Sobre el amarillo, el texto va oscuro para que se lea. */
+.seg-parte[style*='--cat-4'] {
+  color: #0b0b0b;
+}
+
+/* ---- Barrita de proporción dentro de las tarjetas del desglose ---- */
+.cuota {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.cuota-pista {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow: hidden;
+}
+.cuota-relleno {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.cuota-relleno.in {
+  background: var(--ok);
+}
+.cuota-relleno.out {
+  background: var(--out);
+}
+.cuota-pct {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Estadísticas: tarjetas resumen ---- */
 .summary-row {
   display: grid;
@@ -2075,16 +2334,25 @@ table.report tr:hover td {
 }
 
 .summary-label {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--muted);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .summary-value {
-  font-size: 26px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.6px;
   margin: 6px 0 8px;
+}
+/* En el panel de estadísticas el monto va en color de texto; el puntito y la
+   variación (flechita) son los que llevan el color. */
+.summary-row.kpi .summary-value.in,
+.summary-row.kpi .summary-value.out {
+  color: var(--text);
 }
 
 .summary-value.in {
@@ -2111,16 +2379,17 @@ table.report tr:hover td {
 }
 
 .medio-barra {
-  height: 10px;
-  background: var(--surface-2);
-  border-radius: 6px;
+  height: 8px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .medio-relleno {
   height: 100%;
-  border-radius: 6px;
-  min-width: 2px;
+  border-radius: 999px;
+  min-width: 4px;
+  transition: width 0.3s ease;
 }
 
 .medio-relleno.in {
@@ -2165,10 +2434,14 @@ table.report tr:hover td {
   margin-bottom: 10px;
 }
 
+/* En el desglose, el monto va en color de texto; la barrita lleva el color del grupo. */
+.desglose-group .counter-value.in,
+.desglose-group .counter-value.out {
+  color: var(--text);
+}
 .counter-value.in {
   color: var(--ok);
 }
-
 .counter-value.out {
   color: var(--bad);
 }

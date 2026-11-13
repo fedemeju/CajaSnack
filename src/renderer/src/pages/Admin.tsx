@@ -20,7 +20,7 @@ import {
   sumarAgasajos,
   sumarSalidasCaja
 } from '../../../shared/calc'
-import { fechaHora, fechaLinda, formatMoney, hoyISO } from '../lib/format'
+import { escalaEje, fechaHora, fechaLinda, formatCompacto, formatMoney, hoyISO } from '../lib/format'
 import { exportarTurnoPDF, exportarCierreMensualPDF } from '../lib/pdf'
 import { useConfirm } from '../components/Confirm'
 import { Logo, LogoMarca } from '../components/Logo'
@@ -935,6 +935,109 @@ function Delta({
   )
 }
 
+/** Barrita fina con la parte que representa un monto sobre su total, más el porcentaje. */
+function CuotaParte({ valor, total, tono }: { valor: number; total: number; tono: 'in' | 'out' }): JSX.Element {
+  const pct = total > 0 ? (valor / total) * 100 : 0
+  return (
+    <div className="cuota" title={`${Math.round(pct)}% del total`}>
+      <div className="cuota-pista">
+        {pct > 0 && <span className={`cuota-relleno ${tono}`} style={{ width: `${Math.max(pct, 1.5)}%` }} />}
+      </div>
+      <span className="cuota-pct">{Math.round(pct)}%</span>
+    </div>
+  )
+}
+
+/**
+ * Columnas de entradas (arriba de la línea base) y salidas (abajo) por mes, con UNA
+ * sola escala para las dos. Eje con montos redondos, línea de base y grilla finas,
+ * etiqueta de valor sólo en el mes elegido y un globito con el detalle al pasar el mouse.
+ */
+function GraficoEntradasSalidas({
+  datos,
+  selIdx,
+  onSel
+}: {
+  datos: { key: string; y: number; m: number; entradas: number; salidas: number; turnos: number }[]
+  selIdx: number
+  onSel: (i: number) => void
+}): JSX.Element {
+  const ALTO = 190 // alto del área de entradas (px)
+  const maxIn = Math.max(0, ...datos.map((d) => d.entradas))
+  const maxOut = Math.max(0, ...datos.map((d) => d.salidas))
+  const { tope, paso } = escalaEje(Math.max(maxIn, maxOut, 1))
+  const px = ALTO / tope
+  // Lo que se necesita debajo de la base para las salidas (misma escala), con un mínimo.
+  const bajo = Math.min(ALTO, Math.max(22, Math.ceil(maxOut * px) + 8))
+  const alto = (v: number): number => (v > 0 ? Math.max(3, v * px) : 0)
+  const ticks: number[] = []
+  for (let t = paso; t <= tope + 0.5; t += paso) ticks.push(t)
+
+  return (
+    <div className="ec" role="group" aria-label="Entradas y salidas por mes">
+      <div className="ec-plot" style={{ height: ALTO + bajo }}>
+        {ticks.map((t) => (
+          <div className="ec-grid" key={t} style={{ bottom: bajo + t * px }}>
+            <span className="ec-tick">{formatCompacto(t)}</span>
+          </div>
+        ))}
+        <div className="ec-base" style={{ bottom: bajo }}>
+          <span className="ec-tick">$0</span>
+        </div>
+        <div className="ec-cols">
+          {datos.map((d, i) => {
+            const activo = i === selIdx
+            const hIn = alto(d.entradas)
+            const hOut = alto(d.salidas)
+            return (
+              <button
+                key={d.key}
+                type="button"
+                className={`ec-col ${activo ? 'activo' : ''}`}
+                onClick={() => onSel(i)}
+                aria-pressed={activo}
+                aria-label={`${MESES_LARGO[d.m]} ${d.y}: entradas ${formatMoney(d.entradas)}, salidas ${formatMoney(d.salidas)}`}
+              >
+                {hIn > 0 && <span className="ec-bar in" style={{ bottom: bajo, height: hIn }} />}
+                {hOut > 0 && <span className="ec-bar out" style={{ top: ALTO, height: hOut }} />}
+                {activo && d.entradas > 0 && (
+                  <span className="ec-valor" style={{ bottom: bajo + hIn + 6 }}>
+                    {formatCompacto(d.entradas)}
+                  </span>
+                )}
+                <span className="ec-tip" style={{ bottom: bajo + hIn + (activo ? 30 : 10) }}>
+                  <b>
+                    {MESES_LARGO[d.m]} {d.y}
+                  </b>
+                  <span>
+                    <i className="legend-dot in" /> Entradas <em>{formatMoney(d.entradas)}</em>
+                  </span>
+                  <span>
+                    <i className="legend-dot out" /> Salidas <em>{formatMoney(d.salidas)}</em>
+                  </span>
+                  <span className="ec-tip-bal">
+                    Balance <em>{formatMoney(d.entradas - d.salidas)}</em>
+                  </span>
+                  <span className="ec-tip-sub">
+                    {d.turnos} turno{d.turnos === 1 ? '' : 's'}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="ec-x">
+        {datos.map((d, i) => (
+          <span key={d.key} className={i === selIdx ? 'activo' : ''}>
+            {MESES[d.m]}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Estadisticas({ user }: { user: Usuario }): JSX.Element {
   const now = new Date()
   const [anchor, setAnchor] = useState({ y: now.getFullYear(), m: now.getMonth() })
@@ -969,7 +1072,6 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
     return { ...mes, key, mov, ...es, turnos: ts.length }
   })
 
-  const max = Math.max(1, ...datos.map((d) => Math.max(d.entradas, d.salidas)))
   const sel = datos[selIdx] ?? datos[5]
   const prev = datos[selIdx - 1]
 
@@ -1018,25 +1120,25 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
   const cuentaEv = (n: number): string => `${n} ${n === 1 ? 'evento' : 'eventos'}`
   const cuentaPart = (n: number): string => `${n} ${n === 1 ? 'partido' : 'partidos'}`
   const rubItems = [
-    { label: 'Restaurante', value: rubrosMes.restaurante, color: 'var(--primary)', extra: '' },
-    { label: 'Pedidos Ya', value: rubrosMes.pedidoYa, color: '#ef4444', extra: '' },
-    { label: 'Bowling', value: rubrosMes.bowling, color: '#f59e0b', extra: '' },
+    { label: 'Restaurante', value: rubrosMes.restaurante, color: 'var(--cat-1)', extra: '' },
+    { label: 'Pedidos Ya', value: rubrosMes.pedidoYa, color: 'var(--cat-2)', extra: '' },
+    { label: 'Bowling', value: rubrosMes.bowling, color: 'var(--cat-3)', extra: '' },
     {
       label: 'Pool',
       value: rubrosMes.pool,
-      color: '#8b5cf6',
+      color: 'var(--cat-4)',
       extra: rubrosMes.poolUnidades ? cuentaPart(rubrosMes.poolUnidades) : ''
     },
     {
       label: 'Cumples + Señas',
       value: rubrosMes.cumples,
-      color: '#ec4899',
+      color: 'var(--cat-5)',
       extra: agas.cumplesCant ? cuentaEv(agas.cumplesCant) : ''
     },
     {
       label: 'Eventos + Señas',
       value: rubrosMes.eventos,
-      color: '#14b8a6',
+      color: 'var(--cat-6)',
       extra: agas.eventosCant ? cuentaEv(agas.eventosCant) : ''
     }
   ]
@@ -1066,46 +1168,26 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
           </div>
         </div>
         <div className="card-body">
-          <div className="chart">
-            {datos.map((d, i) => (
-              <button
-                key={d.key}
-                className={`chart-col ${i === selIdx ? 'active' : ''}`}
-                onClick={() => setSelIdx(i)}
-                title={`${MESES_LARGO[d.m]} ${d.y}`}
-              >
-                <div className="chart-up">
-                  {d.entradas > 0 && (
-                    <div
-                      className="bar bar-in"
-                      style={{ height: `max(${(d.entradas / max) * 100}%, 4px)` }}
-                    />
-                  )}
-                </div>
-                <div className="chart-zero" />
-                <div className="chart-down">
-                  {d.salidas > 0 && (
-                    <div
-                      className="bar bar-out"
-                      style={{ height: `max(${(d.salidas / max) * 100}%, 4px)` }}
-                    />
-                  )}
-                </div>
-                <div className="chart-label">{MESES[d.m]}</div>
-              </button>
-            ))}
-          </div>
+          <GraficoEntradasSalidas
+            datos={datos}
+            selIdx={selIdx}
+            onSel={setSelIdx}
+          />
         </div>
       </div>
 
-      <div className="summary-row">
+      <div className="summary-row kpi">
         <div className="summary-card">
-          <div className="summary-label">Entradas — {MESES_LARGO[sel.m]}</div>
+          <div className="summary-label">
+            <i className="legend-dot in" /> Entradas — {MESES_LARGO[sel.m]}
+          </div>
           <div className="summary-value in">{formatMoney(sel.entradas)}</div>
           <Delta cur={sel.entradas} prev={prev?.entradas} goodWhenUp />
         </div>
         <div className="summary-card">
-          <div className="summary-label">Salidas — {MESES_LARGO[sel.m]}</div>
+          <div className="summary-label">
+            <i className="legend-dot out" /> Salidas — {MESES_LARGO[sel.m]}
+          </div>
           <div className="summary-value out">{formatMoney(sel.salidas)}</div>
           <Delta cur={sel.salidas} prev={prev?.salidas} goodWhenUp={false} />
         </div>
@@ -1132,6 +1214,7 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
                 <div className="counter" key={c.label}>
                   <div className="counter-label">{c.label}</div>
                   <div className="counter-value in">{formatMoney(c.value)}</div>
+                  <CuotaParte valor={c.value} total={sel.entradas} tono="in" />
                 </div>
               ))}
             </div>
@@ -1145,6 +1228,7 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
                 <div className="counter" key={c.label}>
                   <div className="counter-label">{c.label}</div>
                   <div className="counter-value out">{formatMoney(c.value)}</div>
+                  <CuotaParte valor={c.value} total={sel.salidas} tono="out" />
                 </div>
               ))}
             </div>
@@ -1168,12 +1252,35 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
                 caja base</b> (fondo inicial, no es un ingreso). Cumples y Eventos muestran su ingreso
                 completo, incluidos los facturados como mesa.
               </p>
+              {/* Barra única dividida por rubro (el total del mes en partes). */}
+              <div
+                className="seg-barra"
+                role="img"
+                aria-label={rubItems
+                  .map((x) => `${x.label} ${Math.round((x.value / totalRubros) * 100)}%`)
+                  .join(', ')}
+              >
+                {rubItems.map((x) => {
+                  const pct = (x.value / totalRubros) * 100
+                  return (
+                    <span
+                      key={x.label}
+                      className="seg-parte"
+                      style={{ flexGrow: x.value, background: x.color }}
+                      title={`${x.label}: ${formatMoney(x.value)} (${Math.round(pct)}%)`}
+                    >
+                      {pct >= 8 ? `${Math.round(pct)}%` : ''}
+                    </span>
+                  )
+                })}
+              </div>
               {rubItems.map((x) => {
                 const pct = Math.round((x.value / totalRubros) * 100)
                 return (
                   <div className="medio-fila" key={x.label}>
                     <div className="medio-cabecera">
                       <span>
+                        <i className="legend-dot" style={{ background: x.color, marginRight: 8 }} />
                         {x.label}{' '}
                         <span style={{ color: 'var(--muted)' }}>
                           · {pct}%{x.extra ? ` · ${x.extra}` : ''}
