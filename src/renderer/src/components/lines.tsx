@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Rotulo } from './Rotulo'
 import type { LineaGasto, LineaMesa, LineaRubro } from '../../../shared/types'
 import { formatMoney } from '../lib/format'
 import { setPoolPrecio } from '../lib/poolPrecio'
@@ -262,7 +263,7 @@ export function PoolField({
 
   return (
     <div className="field pool-field">
-      <label>Pool</label>
+      <Rotulo>Pool</Rotulo>
       <div className="pool-controls">
         <div className="stepper">
           <button
@@ -339,7 +340,7 @@ export function MoneyField({
 }): JSX.Element {
   return (
     <div className="field">
-      <label>{label}</label>
+      <Rotulo>{label}</Rotulo>
       <MoneyInput value={value} onChange={onChange} disabled={disabled} />
     </div>
   )

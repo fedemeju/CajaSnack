@@ -12,6 +12,7 @@ import { MesaEditor, MoneyField, PoolField, RubroEditor } from '../components/li
 import { useTurno } from '../lib/useTurno'
 import { enviarCierrePorMail } from '../lib/pdf'
 import { AbrirTurno, EncabezadoTurno } from '../components/AbrirTurno'
+import { Rotulo } from '../components/Rotulo'
 import { CerrarTurnoModal } from '../components/CerrarTurno'
 import { PedirClaveAdmin } from '../components/PedirClaveAdmin'
 import logoMP from '../assets/mercadopago.png'
@@ -90,7 +91,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
             <MoneyField label="Caja Base" value={data.apertura.cajaBase} disabled={aperturaBloqueada} onChange={(v) => setAp({ cajaBase: v })} />
           </div>
           <div className="field" style={{ display: 'block' }}>
-            <label>Mozos</label>
+            <Rotulo>Mozos</Rotulo>
             <div style={{ marginTop: 8 }}>
               <MesaEditor
                 items={data.apertura.mozos}
@@ -131,29 +132,29 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
             <h2>Totales</h2>
             <div className="card-body">
               <div className="field" style={{ borderTop: 0 }}>
-                <label>Total Restaurante</label>
+                <Rotulo>Total Restaurante</Rotulo>
                 <span>{formatMoney(c.totalRestaurante)}</span>
               </div>
 
               <div className="field" style={{ display: 'block' }}>
-                <label>Cumples + Señas</label>
+                <Rotulo>Cumples + Señas</Rotulo>
                 <div style={{ marginTop: 8 }}>
                   <RubroEditor items={data.cumples} disabled={readOnly} onChange={(v) => set({ cumples: v })} />
                 </div>
               </div>
               <div className="field">
-                <label>Total Cumples + Señas</label>
+                <Rotulo>Total Cumples + Señas</Rotulo>
                 <span>{formatMoney(c.totalCumples)}</span>
               </div>
 
               <div className="field" style={{ display: 'block' }}>
-                <label>Eventos + Señas</label>
+                <Rotulo>Eventos + Señas</Rotulo>
                 <div style={{ marginTop: 8 }}>
                   <RubroEditor items={data.eventos} disabled={readOnly} onChange={(v) => set({ eventos: v })} />
                 </div>
               </div>
               <div className="field">
-                <label>Total Eventos + Señas</label>
+                <Rotulo>Total Eventos + Señas</Rotulo>
                 <span>{formatMoney(c.totalEventos)}</span>
               </div>
 
@@ -182,7 +183,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
             <MoneyField label="Efectivo en Sobres" value={data.efectivoEnSobres} disabled={readOnly} onChange={(v) => set({ efectivoEnSobres: v })} />
             <MoneyField label="Pedido Ya" value={data.pedidoYa} disabled={readOnly} onChange={(v) => set({ pedidoYa: v })} />
             <div className="field" style={{ display: 'block' }}>
-              <label>Facturas Proveedores (cada importe)</label>
+              <Rotulo>Facturas Proveedores (cada importe)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={data.facturasProveedores}
@@ -201,14 +202,14 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
             />
             <MoneyField label="Mercado Pago" value={data.mercadoPago} disabled={readOnly} onChange={(v) => set({ mercadoPago: v })} />
             <div className="field mp-total-control">
-              <label>Total MP (Bowling mañana + Mercado Pago)</label>
+              <Rotulo>Total MP (Bowling mañana + Mercado Pago)</Rotulo>
               <span>{formatMoney((data.mercadoPagoBowlingManana ?? 0) + (data.mercadoPago || 0))}</span>
             </div>
             {!readOnly && (
               <TraerMP onImport={(monto) => set({ mercadoPago: monto })} />
             )}
             <div className="field" style={{ display: 'block' }}>
-              <label>Vales (cada importe)</label>
+              <Rotulo>Vales (cada importe)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={data.vales}
@@ -219,7 +220,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
               </div>
             </div>
             <div className="field" style={{ display: 'block' }}>
-              <label>Transferencias (cada importe)</label>
+              <Rotulo>Transferencias (cada importe)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={data.transferencias}
@@ -230,9 +231,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
               </div>
             </div>
             <div style={{ marginTop: 10 }}>
-              <label style={{ display: 'block', marginBottom: 6, color: 'var(--muted)' }}>
-                Otros conceptos
-              </label>
+              <Rotulo style={{ marginBottom: 6, color: 'var(--text-2)', fontWeight: 500 }}>Otros conceptos</Rotulo>
               <MesaEditor
                 items={data.entregadoExtra}
                 disabled={readOnly}

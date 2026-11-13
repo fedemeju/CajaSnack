@@ -594,6 +594,46 @@ select {
   font-size: 14.5px;
 }
 
+/* ---- Ícono al lado de cada ítem (componente Rotulo) ---- */
+.rotulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.rotulo-icono {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+/* Totales calculados: sin ícono, pero con el mismo espacio para que el texto quede alineado. */
+.rotulo-icono.vacio {
+  background: transparent;
+  border-color: transparent;
+}
+/* El color del ícono sigue al grupo de la tarjeta (azul = rendir, verde = entregado). */
+.card-rendir .rotulo-icono:not(.vacio) {
+  color: var(--primary-d);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.card-entrega .rotulo-icono:not(.vacio) {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 9%, var(--surface));
+  border-color: color-mix(in srgb, var(--ok) 18%, transparent);
+}
+.caja-base-destacada .rotulo-icono {
+  color: var(--primary-d);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
 /* Etiqueta + monto en una sola línea (el campo de monto se achica, no la etiqueta). */
 .field:has(> .money-input) > label {
   white-space: nowrap;

@@ -15,6 +15,7 @@ import { GastoEditor, MesaEditor, MoneyField, PoolField } from '../components/li
 import { useTurno } from '../lib/useTurno'
 import { enviarCierrePorMail } from '../lib/pdf'
 import { AbrirTurno, EncabezadoTurno } from '../components/AbrirTurno'
+import { Rotulo } from '../components/Rotulo'
 import { CerrarTurnoModal } from '../components/CerrarTurno'
 import { PedirClaveAdmin } from '../components/PedirClaveAdmin'
 
@@ -95,7 +96,7 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
           <h2>Ingresos · Caja</h2>
           <div className="card-body">
             <div className="field" style={{ display: 'block' }}>
-              <label>Caja Base (uno o varios ingresos)</label>
+              <Rotulo>Caja Base (uno o varios ingresos)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={cajaBaseItems}
@@ -108,7 +109,7 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
               </div>
             </div>
             <div className="field">
-              <label>Total Caja Base</label>
+              <Rotulo>Total Caja Base</Rotulo>
               <span>{formatMoney(cajaBaseTotal)}</span>
             </div>
             <MoneyField
@@ -120,7 +121,7 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
             <MoneyField label="Mesa 49" value={data.mesa49} disabled={readOnly} onChange={(v) => set({ mesa49: v })} />
             <MoneyField label="Recibido Mozo" value={data.recibidoMozo} disabled={readOnly} onChange={(v) => set({ recibidoMozo: v })} />
             <div className="field" style={{ display: 'block' }}>
-              <label>Cumples y Eventos (uno o varios)</label>
+              <Rotulo>Cumples y Eventos (uno o varios)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={data.cumplesEventos ?? []}
@@ -159,7 +160,7 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
             <MoneyField label="Efectivo Retirado" value={data.efectivoRetirado} disabled={readOnly} onChange={(v) => set({ efectivoRetirado: v })} />
             <MoneyField label="Tarjetas Retiradas" value={data.tarjetasRetiradas} disabled={readOnly} onChange={(v) => set({ tarjetasRetiradas: v })} />
             <div className="field" style={{ display: 'block' }}>
-              <label>Mercado Pago (cada cobro)</label>
+              <Rotulo>Mercado Pago (cada cobro)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={data.mercadoPago}
@@ -170,7 +171,7 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
               </div>
             </div>
             <div className="field" style={{ display: 'block' }}>
-              <label>Factura Lincoln (cada cobro)</label>
+              <Rotulo>Factura Lincoln (cada cobro)</Rotulo>
               <div style={{ marginTop: 8 }}>
                 <MesaEditor
                   items={data.facturaLincoln ?? []}
@@ -184,11 +185,11 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
             <div className="gastos-destacado">
               <div className="gastos-destacado-titulo">Gastos pagados (salen de la caja)</div>
               <div className="field">
-                <label>Proveedores (efectivo)</label>
+                <Rotulo>Proveedores (efectivo)</Rotulo>
                 <span>{formatMoney(cuadre.proveedoresEfectivo)}</span>
               </div>
               <div className="field" style={{ borderBottom: 0 }}>
-                <label>Otros gastos (efectivo)</label>
+                <Rotulo>Otros gastos (efectivo)</Rotulo>
                 <span>{formatMoney(cuadre.otrosEfectivo)}</span>
               </div>
               <div className="gastos-destacado-total">
