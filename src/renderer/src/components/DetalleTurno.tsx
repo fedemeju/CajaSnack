@@ -166,6 +166,7 @@ function DetalleNoche({ turno }: { turno: Turno }): JSX.Element {
         <Fila label="Pedido Ya" value={formatMoney(d.pedidoYa)} />
         <Fila label="Facturas Proveedores" value={formatMoney(sumaMesas(d.facturasProveedores))} />
         <Fila label="Instructoras" value={formatMoney(d.instructoras)} />
+        <Fila label="Mercado Pago Bowling turno mañana" value={formatMoney(d.mercadoPagoBowlingManana ?? 0)} />
         <Fila label="Mercado Pago" value={formatMoney(d.mercadoPago)} />
         <Fila label="Vales" value={formatMoney(sumaMesas(d.vales))} />
         <Fila label="Transferencias" value={formatMoney(sumaMesas(d.transferencias))} />

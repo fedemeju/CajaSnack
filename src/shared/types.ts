@@ -84,6 +84,8 @@ export interface TurnoNocheData {
   pedidoYa: number
   facturasProveedores: LineaMesa[]
   instructoras: number
+  /** Mercado Pago del Bowling del turno mañana (suma al Total Entregado). */
+  mercadoPagoBowlingManana?: number
   mercadoPago: number
   vales: LineaMesa[]
   transferencias: LineaMesa[]
@@ -240,6 +242,7 @@ export function turnoNocheVacio(): TurnoNocheData {
     pedidoYa: 0,
     facturasProveedores: [],
     instructoras: 0,
+    mercadoPagoBowlingManana: 0,
     mercadoPago: 0,
     vales: [],
     transferencias: [],

@@ -1,23 +1,23 @@
-import { useEffect, useState } from 'react'
-import { getTheme, type Theme } from '../lib/theme'
-import logoClaro from '../assets/logo-horizontal.png'
-import logoOscuro from '../assets/logo-horizontal-dark.png'
+/**
+ * Logo de la marca, hecho con HTML/CSS (no es una imagen): se ve nítido en
+ * cualquier tamaño y toma los colores del tema claro/oscuro automáticamente.
+ *
+ *   [CS]  Caja Snack
+ *         BOWLING
+ */
 
-/** Devuelve el tema actual y se actualiza cuando cambia (modo claro/oscuro). */
-function useTheme(): Theme {
-  const [theme, setTheme] = useState<Theme>(getTheme())
-  useEffect(() => {
-    const obs = new MutationObserver(() => setTheme(getTheme()))
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
-    return () => obs.disconnect()
-  }, [])
-  return theme
+/** Solo el ícono: cuadrado azul redondeado con "CS". */
+export function LogoMarca({ className }: { className?: string }): JSX.Element {
+  return (
+    <span className={`logo-marca ${className ?? ''}`} role="img" aria-label="Caja Snack">
+      CS
+    </span>
+  )
 }
 
 /**
- * Logo horizontal de la marca. Por defecto elige claro/oscuro según el tema.
- * Si `fondoClaro` es true (ej. una tarjeta siempre blanca como el login), usa
- * siempre la versión de texto oscuro, sin importar el tema.
+ * Logo horizontal (ícono + nombre). Si `fondoClaro` es true (ej. una tarjeta
+ * siempre blanca como el login), usa colores oscuros sin importar el tema.
  */
 export function Logo({
   className,
@@ -26,7 +26,15 @@ export function Logo({
   className?: string
   fondoClaro?: boolean
 }): JSX.Element {
-  const theme = useTheme()
-  const usarOscuro = fondoClaro ? false : theme === 'dark'
-  return <img className={className} src={usarOscuro ? logoOscuro : logoClaro} alt="Caja Snack" />
+  return (
+    <span className={`logo ${fondoClaro ? 'logo-fondo-claro' : ''} ${className ?? ''}`}>
+      <LogoMarca />
+      <span className="logo-texto" aria-hidden>
+        <span className="logo-nombre">
+          Caja <span className="logo-snack">Snack</span>
+        </span>
+        <span className="logo-sub">Bowling</span>
+      </span>
+    </span>
+  )
 }

@@ -11,9 +11,10 @@ import { getPoolPrecio } from '../lib/poolPrecio'
 import { MesaEditor, MoneyField, PoolField, RubroEditor } from '../components/lines'
 import { useTurno } from '../lib/useTurno'
 import { enviarCierrePorMail } from '../lib/pdf'
-import { AbrirTurno, GuardadoBadge } from '../components/AbrirTurno'
+import { AbrirTurno, EncabezadoTurno } from '../components/AbrirTurno'
 import { CerrarTurnoModal } from '../components/CerrarTurno'
 import { PedirClaveAdmin } from '../components/PedirClaveAdmin'
+import logoMP from '../assets/mercadopago.png'
 
 function normalizarNoche(d: TurnoNocheData): TurnoNocheData {
   const ap = (d.apertura ?? {}) as Partial<TurnoNocheData['apertura']>
@@ -74,10 +75,7 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
 
   return (
     <div className="turno-page">
-      <div className="page-title">
-        <h1>Turno Noche · {fechaLinda(t.fecha)}</h1>
-        <GuardadoBadge guardando={t.guardando} guardadoLabel={t.guardadoLabel} />
-      </div>
+      <EncabezadoTurno tipo="noche" fecha={t.fecha} guardando={t.guardando} guardadoLabel={t.guardadoLabel} />
 
       {readOnly && (
         <div className="banner info">
@@ -195,7 +193,17 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
               </div>
             </div>
             <MoneyField label="Instructoras" value={data.instructoras} disabled={readOnly} onChange={(v) => set({ instructoras: v })} />
+            <MoneyField
+              label="Mercado Pago Bowling turno mañana"
+              value={data.mercadoPagoBowlingManana ?? 0}
+              disabled={readOnly}
+              onChange={(v) => set({ mercadoPagoBowlingManana: v })}
+            />
             <MoneyField label="Mercado Pago" value={data.mercadoPago} disabled={readOnly} onChange={(v) => set({ mercadoPago: v })} />
+            <div className="field mp-total-control">
+              <label>Total MP (Bowling mañana + Mercado Pago)</label>
+              <span>{formatMoney((data.mercadoPagoBowlingManana ?? 0) + (data.mercadoPago || 0))}</span>
+            </div>
             {!readOnly && (
               <TraerMP onImport={(monto) => set({ mercadoPago: monto })} />
             )}
@@ -326,6 +334,9 @@ export function TurnoNoche({ user }: { user: Usuario }): JSX.Element {
   )
 }
 
+/** Página de actividad de MP: es donde trabaja la extensión "Calculadora MP V2". */
+const URL_MP_ACTIVIDAD = 'https://www.mercadopago.com.ar/activities'
+
 /** Botón que trae el total de Mercado Pago desde la extensión "Calculadora MP"
  *  (vía portapapeles). Completa el campo Mercado Pago con QR + Point. */
 function TraerMP({ onImport }: { onImport: (monto: number) => void }): JSX.Element {
@@ -367,9 +378,26 @@ function TraerMP({ onImport }: { onImport: (monto: number) => void }): JSX.Eleme
 
   return (
     <div style={{ margin: '2px 0 8px' }}>
-      <button type="button" className="btn-add-soft" onClick={traer}>
-        <span aria-hidden>⬇</span> Traer de MP (portapapeles)
-      </button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {/* Se abre en el navegador predeterminado (setWindowOpenHandler → shell.openExternal).
+            Ahí se usa la extensión "Calculadora MP V2" y luego "Traer de MP". */}
+        <a
+          className="btn-add-soft"
+          href={URL_MP_ACTIVIDAD}
+          target="_blank"
+          rel="noreferrer"
+          style={{ textDecoration: 'none' }}
+          title="Abre la actividad de Mercado Pago en Chrome para usar la extensión Calculadora MP V2"
+        >
+          <span className="mp-logo" aria-hidden>
+            <img src={logoMP} alt="" />
+          </span>{' '}
+          Abrir Mercado Pago ↗
+        </a>
+        <button type="button" className="btn-add-soft" onClick={traer}>
+          <span aria-hidden>⬇</span> Traer de MP (portapapeles)
+        </button>
+      </div>
       {info && <div style={{ fontSize: 12, color: 'var(--ok)', marginTop: 5 }}>{info}</div>}
       {err && <div style={{ fontSize: 12, color: 'var(--bad)', marginTop: 5 }}>{err}</div>}
     </div>

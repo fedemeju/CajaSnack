@@ -109,6 +109,7 @@ export function calcularNoche(d: TurnoNocheData): CuadreNoche {
     (d.pedidoYa || 0) +
     sumaMesas(d.facturasProveedores) +
     (d.instructoras || 0) +
+    (d.mercadoPagoBowlingManana || 0) +
     (d.mercadoPago || 0) +
     sumaMesas(d.vales) +
     sumaMesas(d.transferencias) +

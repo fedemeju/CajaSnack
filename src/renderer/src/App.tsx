@@ -4,23 +4,8 @@ import { Login } from './pages/Login'
 import { TurnoManana } from './pages/TurnoManana'
 import { TurnoNoche } from './pages/TurnoNoche'
 import { Admin } from './pages/Admin'
-import { getTheme, toggleTheme, type Theme } from './lib/theme'
 import { Logo } from './components/Logo'
-
-function ThemeToggle(): JSX.Element {
-  const [theme, setTheme] = useState<Theme>(getTheme())
-  const oscuro = theme === 'dark'
-  return (
-    <button
-      className="btn btn-ghost"
-      title={oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-      aria-label={oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-      onClick={() => setTheme(toggleTheme())}
-    >
-      {oscuro ? 'Claro' : 'Oscuro'}
-    </button>
-  )
-}
+import { ThemeToggle, TopbarAcciones } from './components/TopbarAcciones'
 
 export default function App(): JSX.Element {
   const [user, setUser] = useState<Usuario | null>(null)
@@ -46,13 +31,7 @@ export default function App(): JSX.Element {
         <div className="brand">
           <Logo className="brand-logo" />
         </div>
-        <div className="right">
-          <span className="role-tag">{rolLabel(user.rol)}</span>
-          <ThemeToggle />
-          <button className="btn btn-danger" onClick={() => setUser(null)}>
-            Cerrar sesión
-          </button>
-        </div>
+        <TopbarAcciones user={user} onLogout={() => setUser(null)} themeToggle={<ThemeToggle />} />
       </div>
       <div className="content">
         {user.rol === 'manana' && <TurnoManana user={user} />}
@@ -60,12 +39,6 @@ export default function App(): JSX.Element {
       </div>
     </div>
   )
-}
-
-function rolLabel(rol: string): string {
-  if (rol === 'manana') return 'Turno Mañana'
-  if (rol === 'tarde') return 'Turno Noche'
-  return 'Administrador'
 }
 
 /**

@@ -8,6 +8,7 @@ import type {
   RegistroAuditoria,
   Rol,
   Turno,
+  TurnoNocheData,
   Usuario
 } from '../../../shared/types'
 import {
@@ -22,9 +23,9 @@ import {
 import { fechaHora, fechaLinda, formatMoney, hoyISO } from '../lib/format'
 import { exportarTurnoPDF, exportarCierreMensualPDF } from '../lib/pdf'
 import { useConfirm } from '../components/Confirm'
-import { Logo } from '../components/Logo'
+import { Logo, LogoMarca } from '../components/Logo'
+import { TopbarAcciones } from '../components/TopbarAcciones'
 import { DetalleTurno } from '../components/DetalleTurno'
-import logoCuadrado from '../assets/logo-cuadrado.png'
 
 function inicioMesISO(): string {
   const d = new Date()
@@ -35,6 +36,40 @@ function rolLabel(rol: string): string {
   if (rol === 'manana') return 'Turno Mañana'
   if (rol === 'tarde') return 'Turno Noche'
   return 'Administrador'
+}
+
+/** Atajos de rango de fechas (Hoy, 7 días, Este mes, etc.) para los filtros. */
+function AtajosFecha({ onRango }: { onRango: (desde: string, hasta: string) => void }): JSX.Element {
+  const fmt = (d: Date): string => d.toLocaleDateString('en-CA')
+  const hoy = new Date()
+  const y = hoy.getFullYear()
+  const m = hoy.getMonth()
+  const off = (n: number): Date => {
+    const x = new Date()
+    x.setDate(x.getDate() + n)
+    return x
+  }
+  const atajos: { label: string; desde: Date; hasta: Date }[] = [
+    { label: 'Hoy', desde: hoy, hasta: hoy },
+    { label: '7 días', desde: off(-6), hasta: hoy },
+    { label: 'Este mes', desde: new Date(y, m, 1), hasta: hoy },
+    { label: 'Mes pasado', desde: new Date(y, m - 1, 1), hasta: new Date(y, m, 0) },
+    { label: 'Este año', desde: new Date(y, 0, 1), hasta: hoy }
+  ]
+  return (
+    <div className="atajos-fecha">
+      {atajos.map((a) => (
+        <button
+          key={a.label}
+          type="button"
+          className="chip-atajo"
+          onClick={() => onRango(fmt(a.desde), fmt(a.hasta))}
+        >
+          {a.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 type AdminTab =
@@ -147,7 +182,7 @@ export function Admin({
       <aside className="admin-rail">
         <div className="rail-brand">
           <Logo className="rail-logo-full" />
-          <img className="rail-logo-mini" src={logoCuadrado} alt="Caja Snack" />
+          <LogoMarca className="rail-logo-mini" />
         </div>
 
         <button
@@ -196,13 +231,7 @@ export function Admin({
 
       <div className="admin-main">
         <header className="admin-topbar">
-          <div className="admin-topbar-right">
-            <span className="role-tag">{rolLabel(user.rol)}</span>
-            {themeToggle}
-            <button className="btn btn-danger" onClick={onLogout}>
-              Cerrar sesión
-            </button>
-          </div>
+          <TopbarAcciones user={user} onLogout={onLogout} themeToggle={themeToggle} />
         </header>
 
         <div className="admin-scroll">
@@ -455,7 +484,11 @@ function Reportes({ user }: { user: Usuario }): JSX.Element {
     })
   }
 
-  useEffect(cargar, [desde, hasta])
+  useEffect(() => {
+    const h = setTimeout(cargar, 300)
+    return () => clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, hasta])
 
   const turnos =
     tipoFiltro === 'todos' ? turnosRaw : turnosRaw.filter((t) => t.tipo === tipoFiltro)
@@ -484,6 +517,12 @@ function Reportes({ user }: { user: Usuario }): JSX.Element {
             <span>Hasta</span>
             <input className="text-input" style={{ width: 'auto' }} type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </label>
+          <AtajosFecha
+            onRango={(d, h) => {
+              setDesde(d)
+              setHasta(h)
+            }}
+          />
           <label className="filter">
             <span>Turno</span>
             <div className="seg">
@@ -616,12 +655,15 @@ function Actividad({ user }: { user: Usuario }): JSX.Element {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    window.api.listarAuditoria(user.id, desde, hasta).then((res) => {
-      if (res.ok) {
-        setRegistros(res.data)
-        setError('')
-      } else setError(res.error)
-    })
+    const t = setTimeout(() => {
+      window.api.listarAuditoria(user.id, desde, hasta).then((res) => {
+        if (res.ok) {
+          setRegistros(res.data)
+          setError('')
+        } else setError(res.error)
+      })
+    }, 300)
+    return () => clearTimeout(t)
   }, [desde, hasta, user.id])
 
   return (
@@ -636,6 +678,12 @@ function Actividad({ user }: { user: Usuario }): JSX.Element {
             <span>Hasta</span>
             <input className="text-input" style={{ width: 'auto' }} type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </label>
+          <AtajosFecha
+            onRango={(d, h) => {
+              setDesde(d)
+              setHasta(h)
+            }}
+          />
           <div className="stats">
             <div className="stat">
               <div className="stat-label">Eventos</div>
@@ -1178,11 +1226,125 @@ function Estadisticas({ user }: { user: Usuario }): JSX.Element {
   )
 }
 
+/** Normaliza un nombre: minúsculas, sin acentos ni símbolos, espacios colapsados. */
+function normalizarNombre(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+/** Distancia de edición (Levenshtein) entre dos textos. */
+function distanciaEdicion(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  if (m === 0) return n
+  if (n === 0) return m
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) {
+      cur[j] =
+        a[i - 1] === b[j - 1]
+          ? prev[j - 1]
+          : 1 + Math.min(prev[j], cur[j - 1], prev[j - 1])
+    }
+    prev = cur
+  }
+  return prev[n]
+}
+
+export interface ValeItem {
+  fecha: string
+  detalle: string
+  monto: number
+}
+
+export interface GrupoVale {
+  display: string
+  total: number
+  count: number
+  variantes: string[]
+  vales: ValeItem[]
+}
+
+/**
+ * Agrupa vales por persona y suma el total. Criterio SEGURO contra falsos
+ * positivos: primero une por nombre exacto (ignorando mayúsculas/acentos/símbolos)
+ * y cuenta cuántas veces aparece cada uno. Los nombres que se repiten (≥2) se
+ * consideran personas reales y NO se fusionan entre sí (Adrián ≠ Adriana). Solo
+ * las grafías sueltas (aparecen una vez, probables typos) se absorben hacia el
+ * nombre frecuente más parecido (distancia de edición ≤ 1). Así fede/FEDE/fedde
+ * se unen, pero dos nombres que ambos se repiten quedan separados.
+ */
+function agruparVales(items: ValeItem[]): GrupoVale[] {
+  const norm = items.map((it) => ({
+    ...it,
+    norm: normalizarNombre(it.detalle),
+    orig: (it.detalle || '').trim() || '(sin nombre)'
+  }))
+  const freq = new Map<string, number>()
+  for (const it of norm) freq.set(it.norm, (freq.get(it.norm) || 0) + 1)
+  const frecuentes = [...freq.keys()].filter((k) => k && (freq.get(k) || 0) >= 2)
+
+  const canonDe = (n: string): string => {
+    if ((freq.get(n) || 0) >= 2 || !n) return n // ya es un nombre "real" (o vacío)
+    let best: string | null = null
+    let bestD = Infinity
+    for (const c of frecuentes) {
+      if (Math.min(c.length, n.length) < 4) continue
+      const d = distanciaEdicion(c, n)
+      if (d <= 1 && d < bestD) {
+        best = c
+        bestD = d
+      }
+    }
+    return best ?? n
+  }
+
+  const grupos = new Map<
+    string,
+    { total: number; count: number; orig: Map<string, number>; vales: ValeItem[] }
+  >()
+  for (const it of norm) {
+    const canon = canonDe(it.norm)
+    let g = grupos.get(canon)
+    if (!g) {
+      g = { total: 0, count: 0, orig: new Map(), vales: [] }
+      grupos.set(canon, g)
+    }
+    g.total += it.monto
+    g.count += 1
+    g.orig.set(it.orig, (g.orig.get(it.orig) || 0) + 1)
+    g.vales.push({ fecha: it.fecha, detalle: it.orig, monto: it.monto })
+  }
+
+  return [...grupos.values()]
+    .map((g) => {
+      let display = '(sin nombre)'
+      let best = -1
+      for (const [k, c] of g.orig) {
+        if (c > best || (c === best && k.length > display.length)) {
+          best = c
+          display = k
+        }
+      }
+      g.vales.sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+      return { display, total: g.total, count: g.count, variantes: [...g.orig.keys()], vales: g.vales }
+    })
+    .sort((a, b) => b.total - a.total)
+}
+
 function Salidas({ user }: { user: Usuario }): JSX.Element {
   const now = new Date()
   const [anchor, setAnchor] = useState({ y: now.getFullYear(), m: now.getMonth() })
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [error, setError] = useState('')
+  const [verVales, setVerVales] = useState(false)
+  const [personaAbierta, setPersonaAbierta] = useState<string | null>(null)
 
   useEffect(() => {
     const desde = new Date(anchor.y, anchor.m, 1).toLocaleDateString('en-CA')
@@ -1201,7 +1363,17 @@ function Salidas({ user }: { user: Usuario }): JSX.Element {
   }
 
   const key = monthKey(anchor.y, anchor.m)
-  const s = sumarSalidasCaja(turnos.filter((t) => t.fecha.slice(0, 7) === key))
+  const delMes = turnos.filter((t) => t.fecha.slice(0, 7) === key)
+  const s = sumarSalidasCaja(delMes)
+  // Detalle de cada vale (quién + monto + fecha), para desplegar al tocar "Vales".
+  const valesDetalle = delMes
+    .filter((t) => t.tipo === 'noche')
+    .flatMap((t) =>
+      ((t.data as TurnoNocheData).vales ?? [])
+        .filter((v) => v.detalle || v.monto)
+        .map((v) => ({ fecha: t.fecha, detalle: v.detalle, monto: v.monto || 0 }))
+    )
+  const valesAgrupados = agruparVales(valesDetalle)
   const efectivoItems = [
     { label: 'Vales', value: s.vales },
     { label: 'Instructoras', value: s.instructoras },
@@ -1240,12 +1412,80 @@ function Salidas({ user }: { user: Usuario }): JSX.Element {
               <span>💵 Efectivo</span>
               <span>{formatMoney(totalEfectivo)}</span>
             </div>
-            {efectivoItems.map((x) => (
-              <div className="det-fila" key={x.label}>
-                <span>{x.label}</span>
-                <span className="num">{formatMoney(x.value)}</span>
-              </div>
-            ))}
+            {efectivoItems.map((x) =>
+              x.label === 'Vales' && valesDetalle.length > 0 ? (
+                <div key="vales">
+                  <button
+                    type="button"
+                    className="salida-fila-btn"
+                    onClick={() => setVerVales((v) => !v)}
+                    aria-expanded={verVales}
+                  >
+                    <span>
+                      <i className={`salida-caret ${verVales ? 'abierto' : ''}`} aria-hidden>
+                        ▸
+                      </i>{' '}
+                      Vales{' '}
+                      <span className="salida-hint">
+                        ({valesAgrupados.length} {valesAgrupados.length === 1 ? 'persona' : 'personas'}) · ver por persona
+                      </span>
+                    </span>
+                    <span className="num">{formatMoney(x.value)}</span>
+                  </button>
+                  {verVales && (
+                    <div className="salida-detalle">
+                      {valesAgrupados.map((g, i) => {
+                        const abierta = personaAbierta === g.display + i
+                        return (
+                          <div key={i}>
+                            <button
+                              type="button"
+                              className="salida-fila-btn salida-sub"
+                              onClick={() => setPersonaAbierta(abierta ? null : g.display + i)}
+                              aria-expanded={abierta}
+                              title={g.variantes.length > 1 ? 'Une: ' + g.variantes.join(', ') : undefined}
+                            >
+                              <span>
+                                <i className={`salida-caret ${abierta ? 'abierto' : ''}`} aria-hidden>
+                                  ▸
+                                </i>{' '}
+                                {g.display}
+                                <span className="salida-fecha">
+                                  {' '}
+                                  · {g.count} {g.count === 1 ? 'vale' : 'vales'}
+                                  {g.variantes.length > 1 ? ` · ${g.variantes.length} variantes` : ''}
+                                </span>
+                              </span>
+                              <span className="num">{formatMoney(g.total)}</span>
+                            </button>
+                            {abierta && (
+                              <div className="salida-detalle">
+                                {g.vales.map((v, j) => (
+                                  <div className="det-fila salida-sub" key={j}>
+                                    <span>
+                                      {fechaLinda(v.fecha)}
+                                      {v.detalle !== g.display ? (
+                                        <span className="salida-fecha"> · «{v.detalle}»</span>
+                                      ) : null}
+                                    </span>
+                                    <span className="num">{formatMoney(v.monto)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="det-fila" key={x.label}>
+                  <span>{x.label}</span>
+                  <span className="num">{formatMoney(x.value)}</span>
+                </div>
+              )
+            )}
           </div>
 
           <div className="salida-grupo">
@@ -1286,7 +1526,11 @@ function Bowling({ user }: { user: Usuario }): JSX.Element {
     })
   }
 
-  useEffect(cargar, [desde, hasta])
+  useEffect(() => {
+    const h = setTimeout(cargar, 300)
+    return () => clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, hasta])
 
   const noches = turnos.filter((t) => t.tipo === 'noche')
   const conBowling = noches.map((t) => ({ t, monto: bowlingDeTurno(t) })).filter((x) => x.monto > 0)
@@ -1335,6 +1579,12 @@ function Bowling({ user }: { user: Usuario }): JSX.Element {
             <span>Hasta</span>
             <input className="text-input" style={{ width: 'auto' }} type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </label>
+          <AtajosFecha
+            onRango={(d, h) => {
+              setDesde(d)
+              setHasta(h)
+            }}
+          />
           <div className="stats">
             <div className="stat">
               <div className="stat-label">Noches con bowling</div>
@@ -1482,7 +1732,11 @@ function Mozos({ user }: { user: Usuario }): JSX.Element {
       } else setError(res.error)
     })
   }
-  useEffect(cargar, [desde, hasta])
+  useEffect(() => {
+    const h = setTimeout(cargar, 300)
+    return () => clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, hasta])
 
   const noches = turnos.filter((t) => t.tipo === 'noche')
   const acc = new Map<string, { total: number; noches: number; mesas: number }>()
@@ -1532,6 +1786,12 @@ function Mozos({ user }: { user: Usuario }): JSX.Element {
             <span>Hasta</span>
             <input className="text-input" style={{ width: 'auto' }} type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </label>
+          <AtajosFecha
+            onRango={(d, h) => {
+              setDesde(d)
+              setHasta(h)
+            }}
+          />
           <div className="stats">
             <div className="stat">
               <div className="stat-label">Noches</div>
@@ -1652,7 +1912,11 @@ function Control({ user }: { user: Usuario }): JSX.Element {
     })
   }
 
-  useEffect(cargar, [desde, hasta])
+  useEffect(() => {
+    const h = setTimeout(cargar, 300)
+    return () => clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desde, hasta])
 
   const cerrados = turnos.filter((t) => t.estado === 'cerrado')
   const abiertos = turnos.filter((t) => t.estado === 'abierto')
@@ -1737,6 +2001,12 @@ function Control({ user }: { user: Usuario }): JSX.Element {
             <span>Hasta</span>
             <input className="text-input" style={{ width: 'auto' }} type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </label>
+          <AtajosFecha
+            onRango={(d, h) => {
+              setDesde(d)
+              setHasta(h)
+            }}
+          />
           <label className="filter">
             <span>Umbral diferencia</span>
             <input

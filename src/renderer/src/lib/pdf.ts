@@ -145,6 +145,7 @@ function construirTurnoPDF(turno: Turno): jsPDF {
     line('Facturas Proveedores', formatMoney(sumaMesas(d.facturasProveedores)))
     mesas(d.facturasProveedores)
     line('Instructoras', formatMoney(d.instructoras))
+    line('Mercado Pago Bowling turno mañana', formatMoney(d.mercadoPagoBowlingManana ?? 0))
     line('Mercado Pago', formatMoney(d.mercadoPago))
     line('Vales', formatMoney(sumaMesas(d.vales)))
     mesas(d.vales)

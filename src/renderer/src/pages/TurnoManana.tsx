@@ -14,7 +14,7 @@ import { getPoolPrecio } from '../lib/poolPrecio'
 import { GastoEditor, MesaEditor, MoneyField, PoolField } from '../components/lines'
 import { useTurno } from '../lib/useTurno'
 import { enviarCierrePorMail } from '../lib/pdf'
-import { AbrirTurno, GuardadoBadge } from '../components/AbrirTurno'
+import { AbrirTurno, EncabezadoTurno } from '../components/AbrirTurno'
 import { CerrarTurnoModal } from '../components/CerrarTurno'
 import { PedirClaveAdmin } from '../components/PedirClaveAdmin'
 
@@ -79,10 +79,7 @@ export function TurnoManana({ user }: { user: Usuario }): JSX.Element {
 
   return (
     <div className="turno-page">
-      <div className="page-title">
-        <h1>Turno Mañana · {fechaLinda(t.fecha)}</h1>
-        <GuardadoBadge guardando={t.guardando} guardadoLabel={t.guardadoLabel} />
-      </div>
+      <EncabezadoTurno tipo="manana" fecha={t.fecha} guardando={t.guardando} guardadoLabel={t.guardadoLabel} />
 
       {readOnly && (
         <div className="banner info">
